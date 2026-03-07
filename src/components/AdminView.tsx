@@ -243,6 +243,21 @@ export function AdminView({ collections, onBack }: AdminViewProps) {
       exit={{ opacity: 0, x: -20 }}
       className="p-6 space-y-8"
     >
+<<<<<<< HEAD
+=======
+      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <h2 className="text-xl font-serif font-bold text-brand-primary">
+          Painel Administrativo
+        </h2>
+        <button 
+          onClick={onBack}
+          className="p-2 text-slate-400 hover:text-brand-primary transition-colors"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+      </div>
+
+>>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
       {/* Mode Toggle */}
       <div className="flex p-1 bg-slate-100 rounded-2xl">
         <button
@@ -584,9 +599,15 @@ export function AdminView({ collections, onBack }: AdminViewProps) {
                 <p className="text-xs font-bold uppercase tracking-widest">Carregando músicas...</p>
               </div>
             ) : filteredSongs.length > 0 ? (
+<<<<<<< HEAD
               filteredSongs.map((song, idx) => (
                 <div 
                   key={`${song.id}-${idx}`}
+=======
+              filteredSongs.map((song) => (
+                <div 
+                  key={song.id}
+>>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                   className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between gap-4 hover:border-brand-primary/20 transition-all group"
                 >
                   <div className="flex items-center gap-4 min-w-0">
