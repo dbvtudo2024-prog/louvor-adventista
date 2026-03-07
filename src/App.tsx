@@ -22,13 +22,9 @@ import {
   AlertTriangle,
   ExternalLink,
   Disc,
-<<<<<<< HEAD
   Monitor,
   ArrowUp,
   Download
-=======
-  Monitor
->>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
@@ -395,11 +391,7 @@ export default function App() {
   }
 
   return (
-<<<<<<< HEAD
     <div className="h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
-=======
-    <div className="min-h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
->>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
@@ -422,15 +414,11 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-<<<<<<< HEAD
       <main 
         ref={mainRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full"
       >
-=======
-      <main className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full">
->>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
@@ -458,9 +446,9 @@ export default function App() {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Resultados da Busca</h3>
                   <div className="space-y-2">
                     {filteredSongs.length > 0 ? (
-                      filteredSongs.map((song, idx) => (
+                      filteredSongs.map((song) => (
                         <button
-                          key={`${song.id}-${idx}`}
+                          key={song.id}
                           onClick={() => navigateTo('song', { song })}
                           className="w-full flex items-center gap-4 p-4 bg-white rounded-xl hover:bg-brand-primary/5 transition-all text-left group border border-slate-100 shadow-sm"
                         >
@@ -539,9 +527,9 @@ export default function App() {
               {view === 'collection' && albums.length > 0 ? (
                 /* Album Grid (Image 2 Style) */
                 <div className="grid grid-cols-3 gap-3">
-                  {albums.map((album, idx) => (
+                  {albums.map((album) => (
                     <motion.button
-                      key={`${album.album}-${idx}`}
+                      key={`${album.album}-${album.year}`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => navigateTo('collection', { album })}
@@ -578,9 +566,9 @@ export default function App() {
                 /* Song List (Favorites or regular collections) */
                 <div className="space-y-2">
                   {filteredSongs.length > 0 ? (
-                    filteredSongs.map((song, idx) => (
+                    filteredSongs.map((song) => (
                       <button
-                        key={`${song.id}-${idx}`}
+                        key={song.id}
                         onClick={() => {
                           navigateTo('song', { song });
                         }}
@@ -677,9 +665,9 @@ export default function App() {
                     {songs
                       .filter(s => s.collection_id === selectedCollection?.id && s.album_name === selectedAlbum.album && String(s.year) === String(selectedAlbum.year))
                       .sort((a, b) => (a.number || 0) - (b.number || 0))
-                      .map((song, idx) => (
+                      .map((song) => (
                         <button
-                          key={`${song.id}-${idx}`}
+                          key={song.id}
                           onClick={() => {
                             setSelectedSong(song);
                             setView('song');
@@ -1087,7 +1075,6 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
-<<<<<<< HEAD
       {/* Scroll to Top Button */}
       <AnimatePresence>
         {showScrollTop && (
@@ -1103,8 +1090,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-=======
->>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
       {/* Projection View */}
       <AnimatePresence>
         {isProjecting && selectedSong && (
