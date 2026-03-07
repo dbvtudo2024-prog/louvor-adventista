@@ -21,23 +21,16 @@ import {
   Loader2,
   AlertTriangle,
   ExternalLink,
-<<<<<<< HEAD
   Disc,
   Monitor
-=======
-  Disc
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
 import { Collection, Song } from './types';
 import { MOCK_COLLECTIONS, MOCK_SONGS } from './data';
 import { AdminView } from './components/AdminView';
-<<<<<<< HEAD
 import { ProjectionView } from './components/ProjectionView';
 import { ProjectedOnlyView } from './components/ProjectedOnlyView';
-=======
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
 
 const ICON_MAP: Record<string, any> = {
   church: Church,
@@ -68,7 +61,6 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<any>(null);
   const [audio] = useState(new Audio());
-<<<<<<< HEAD
   const [isProjecting, setIsProjecting] = useState(false);
   const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(false);
   const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(null);
@@ -81,8 +73,6 @@ export default function App() {
       setProjectOnlySongId(params.get('songId'));
     }
   }, []);
-=======
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
 
   // Handle Auth State
   useEffect(() => {
@@ -91,6 +81,8 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+    }).catch(err => {
+      console.error('Erro ao buscar sessão:', err);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -222,11 +214,8 @@ export default function App() {
       currentSongs = currentSongs.filter(s => s.collection_id === selectedCollection.id);
     } else if (view === 'favorites') {
       currentSongs = currentSongs.filter(s => favorites.includes(s.id));
-<<<<<<< HEAD
     } else if (view === 'home' && !searchQuery) {
       return []; // No songs to show on home if no search
-=======
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
     }
     
     if (searchQuery) {
@@ -248,7 +237,6 @@ export default function App() {
 
   const handleBack = () => {
     if (view === 'song') {
-<<<<<<< HEAD
       window.history.back();
     } else if (view === 'collection') {
       if (selectedAlbum) setSelectedAlbum(null);
@@ -293,14 +281,6 @@ export default function App() {
     if (data?.collection) setSelectedCollection(data.collection);
     if (data?.song) setSelectedSong(data.song);
     if (data?.album) setSelectedAlbum(data.album);
-=======
-      if (selectedAlbum) setView('collection');
-      else setView('collection');
-    }
-    else if (view === 'collection' && selectedAlbum) setSelectedAlbum(null);
-    else if (view === 'admin') setView('home');
-    else setView('home');
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
   };
 
   const albums = useMemo(() => {
@@ -333,15 +313,12 @@ export default function App() {
     });
   }, [selectedCollection, songs]);
 
-<<<<<<< HEAD
   if (isProjectOnlyMode && projectOnlySongId) {
     const song = songs.find(s => s.id === projectOnlySongId);
     if (song) return <ProjectedOnlyView song={song} />;
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Hino não encontrado.</div>;
   }
 
-=======
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
   if (configError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm p-8 max-w-md mx-auto text-center">
@@ -381,34 +358,22 @@ export default function App() {
   }
 
   return (
-<<<<<<< HEAD
     <div className="min-h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
-=======
-    <div className="min-h-screen flex flex-col max-w-md mx-auto bg-brand-warm shadow-2xl relative overflow-hidden transition-colors duration-500">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
-        <div className="flex items-center gap-3">
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
           {view !== 'home' && (
             <button onClick={handleBack} className="p-2 -ml-2 hover:bg-black/5 rounded-full transition-colors">
               <ChevronLeft className="w-6 h-6 text-brand-primary" />
             </button>
           )}
-<<<<<<< HEAD
           <h1 className="text-2xl font-serif font-bold tracking-tight text-brand-primary flex-1">
-=======
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-brand-primary">
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
             {view === 'home' ? 'Louvor Adventista' : 
              view === 'collection' ? (selectedAlbum ? selectedAlbum.album : selectedCollection?.name) : 
              view === 'favorites' ? 'Favoritos' : 
              view === 'song' ? (collections.find(c => c.id === selectedSong?.collection_id)?.name || 'Música') :
              view === 'admin' ? 'Administração' : 'Louvor'}
           </h1>
-<<<<<<< HEAD
           <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-black/5 rounded-full transition-colors">
             <Menu className="w-6 h-6 text-brand-primary" />
           </button>
@@ -417,16 +382,6 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full">
-=======
-        </div>
-        <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-          <Menu className="w-6 h-6 text-brand-primary" />
-        </button>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto scrollbar-hide pb-24">
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
@@ -449,7 +404,6 @@ export default function App() {
               </div>
 
               {/* Collections Grid */}
-<<<<<<< HEAD
               {searchQuery ? (
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Resultados da Busca</h3>
@@ -511,32 +465,6 @@ export default function App() {
                   })}
                 </div>
               )}
-=======
-              <div className="grid grid-cols-2 gap-4 pb-12">
-                {collections.map((collection) => {
-                  const Icon = ICON_MAP[collection.icon] || Music;
-                  return (
-                    <motion.button
-                      key={collection.id}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        setSelectedCollection(collection);
-                        setView('collection');
-                      }}
-                      className="flex flex-col items-center justify-center p-6 bg-white rounded-[2rem] shadow-sm border border-slate-100 group transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4 group-hover:bg-brand-primary group-hover:text-white transition-colors text-brand-primary">
-                        <Icon className="w-8 h-8" />
-                      </div>
-                      <span className="text-sm font-bold text-brand-primary text-center leading-tight">
-                        {collection.name}
-                      </span>
-                    </motion.button>
-                  );
-                })}
-              </div>
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
             </motion.div>
           )}
 
@@ -567,11 +495,7 @@ export default function App() {
                       key={`${album.album}-${idx}`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-<<<<<<< HEAD
                       onClick={() => navigateTo('collection', { album })}
-=======
-                      onClick={() => setSelectedAlbum(album)}
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                       className="flex flex-col gap-1.5"
                     >
                       <div className="aspect-square bg-sky-400 rounded-xl overflow-hidden shadow-md border-2 border-white flex items-center justify-center relative group">
@@ -605,20 +529,11 @@ export default function App() {
                 /* Song List (Favorites or regular collections) */
                 <div className="space-y-2">
                   {filteredSongs.length > 0 ? (
-<<<<<<< HEAD
                     filteredSongs.map((song, idx) => (
                       <button
                         key={`${song.id}-${idx}`}
                         onClick={() => {
                           navigateTo('song', { song });
-=======
-                    filteredSongs.map((song) => (
-                      <button
-                        key={song.id}
-                        onClick={() => {
-                          setSelectedSong(song);
-                          setView('song');
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                         }}
                         className="w-full flex items-center gap-4 p-4 bg-white rounded-xl hover:bg-brand-primary/5 transition-all text-left group border-b border-slate-50"
                       >
@@ -713,15 +628,9 @@ export default function App() {
                     {songs
                       .filter(s => s.collection_id === selectedCollection?.id && s.album_name === selectedAlbum.album && String(s.year) === String(selectedAlbum.year))
                       .sort((a, b) => (a.number || 0) - (b.number || 0))
-<<<<<<< HEAD
                       .map((song, idx) => (
                         <button
                           key={`${song.id}-${idx}`}
-=======
-                      .map((song) => (
-                        <button
-                          key={song.id}
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                           onClick={() => {
                             setSelectedSong(song);
                             setView('song');
@@ -759,15 +668,9 @@ export default function App() {
                 {/* Song Player Controls & Favorite - IMAGE 1 STYLE */}
                 <div className="flex items-center gap-4 w-full">
                   <div className="flex-1 bg-white rounded-2xl p-4 shadow-xl border border-slate-100 flex flex-col gap-3 relative overflow-hidden">
-<<<<<<< HEAD
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-sm font-bold text-brand-primary truncate">
-=======
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-brand-primary truncate max-w-[150px]">
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                           {selectedSong.title}
                         </span>
                         <span className="text-[10px] font-mono text-slate-400">
@@ -775,7 +678,6 @@ export default function App() {
                         </span>
                       </div>
                       
-<<<<<<< HEAD
                       <div className="flex items-center gap-2 shrink-0">
                         <button 
                           onClick={() => setIsPlaying(!isPlaying)}
@@ -796,18 +698,6 @@ export default function App() {
                           <Monitor className="w-5 h-5" />
                         </button>
                       </div>
-=======
-                      <button 
-                        onClick={() => setIsPlaying(!isPlaying)}
-                        disabled={!selectedSong.audio_url}
-                        className={cn(
-                          "w-10 h-10 rounded-full text-white shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95",
-                          selectedSong.audio_url ? "bg-sky-400" : "bg-slate-300 cursor-not-allowed"
-                        )}
-                      >
-                        {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-                      </button>
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
                     </div>
 
                     {/* Progress Bar Placeholder */}
@@ -867,7 +757,6 @@ export default function App() {
       </main>
 
       {/* Navigation */}
-<<<<<<< HEAD
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 z-50">
         <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-around">
           <button 
@@ -886,24 +775,6 @@ export default function App() {
             <span className="text-[10px] font-bold uppercase tracking-wider">Favoritos</span>
           </button>
         </div>
-=======
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-lg border-t border-slate-100 px-8 py-4 flex items-center justify-between z-50">
-        <button 
-          onClick={() => setView('home')}
-          className={cn("flex flex-col items-center gap-1 transition-colors", view === 'home' ? "text-brand-primary" : "text-slate-400")}
-        >
-          <Home className="w-6 h-6" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Início</span>
-        </button>
-        
-        <button 
-          onClick={() => setView('favorites')}
-          className={cn("flex flex-col items-center gap-1 transition-colors", view === 'favorites' ? "text-brand-primary" : "text-slate-400")}
-        >
-          <Heart className="w-6 h-6" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Favoritos</span>
-        </button>
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
       </nav>
 
 
@@ -1142,7 +1013,6 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
-<<<<<<< HEAD
       {/* Projection View */}
       <AnimatePresence>
         {isProjecting && selectedSong && (
@@ -1154,8 +1024,6 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-=======
->>>>>>> fd9bc1df85e15ac5114267e14fa2796f6bd36423
     </div>
   );
 }
