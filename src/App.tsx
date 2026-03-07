@@ -22,9 +22,13 @@ import {
   AlertTriangle,
   ExternalLink,
   Disc,
+<<<<<<< HEAD
   Monitor,
   ArrowUp,
   Download
+=======
+  Monitor
+>>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
@@ -391,7 +395,11 @@ export default function App() {
   }
 
   return (
+<<<<<<< HEAD
     <div className="h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
+=======
+    <div className="min-h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
+>>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
@@ -414,11 +422,15 @@ export default function App() {
       </header>
 
       {/* Main Content */}
+<<<<<<< HEAD
       <main 
         ref={mainRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full"
       >
+=======
+      <main className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full">
+>>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
@@ -1075,6 +1087,7 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+<<<<<<< HEAD
       {/* Scroll to Top Button */}
       <AnimatePresence>
         {showScrollTop && (
@@ -1090,6 +1103,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
+=======
+>>>>>>> 6dba22e620aaa671e1cc9a686d98e0b5762e63f0
       {/* Projection View */}
       <AnimatePresence>
         {isProjecting && selectedSong && (
