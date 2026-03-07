@@ -446,9 +446,9 @@ export default function App() {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Resultados da Busca</h3>
                   <div className="space-y-2">
                     {filteredSongs.length > 0 ? (
-                      filteredSongs.map((song, idx) => (
+                      filteredSongs.map((song) => (
                         <button
-                          key={`${song.id}-${idx}`}
+                          key={song.id}
                           onClick={() => navigateTo('song', { song })}
                           className="w-full flex items-center gap-4 p-4 bg-white rounded-xl hover:bg-brand-primary/5 transition-all text-left group border border-slate-100 shadow-sm"
                         >
@@ -527,9 +527,9 @@ export default function App() {
               {view === 'collection' && albums.length > 0 ? (
                 /* Album Grid (Image 2 Style) */
                 <div className="grid grid-cols-3 gap-3">
-                  {albums.map((album, idx) => (
+                  {albums.map((album) => (
                     <motion.button
-                      key={`${album.album}-${idx}`}
+                      key={`${album.album}-${album.year}`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => navigateTo('collection', { album })}
@@ -566,9 +566,9 @@ export default function App() {
                 /* Song List (Favorites or regular collections) */
                 <div className="space-y-2">
                   {filteredSongs.length > 0 ? (
-                    filteredSongs.map((song, idx) => (
+                    filteredSongs.map((song) => (
                       <button
-                        key={`${song.id}-${idx}`}
+                        key={song.id}
                         onClick={() => {
                           navigateTo('song', { song });
                         }}
@@ -665,9 +665,9 @@ export default function App() {
                     {songs
                       .filter(s => s.collection_id === selectedCollection?.id && s.album_name === selectedAlbum.album && String(s.year) === String(selectedAlbum.year))
                       .sort((a, b) => (a.number || 0) - (b.number || 0))
-                      .map((song, idx) => (
+                      .map((song) => (
                         <button
-                          key={`${song.id}-${idx}`}
+                          key={song.id}
                           onClick={() => {
                             setSelectedSong(song);
                             setView('song');

@@ -190,7 +190,8 @@ export function AdminView({ collections }: AdminViewProps) {
         audio_url: finalAudioUrl || null,
         cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
-        year: year ? parseInt(year) : null
+        year: year ? parseInt(year) : null,
+        user_id: (await supabase.auth.getUser()).data.user?.id
       };
 
       if (editingSongId) {
@@ -582,9 +583,9 @@ export function AdminView({ collections }: AdminViewProps) {
                 <p className="text-xs font-bold uppercase tracking-widest">Carregando músicas...</p>
               </div>
             ) : filteredSongs.length > 0 ? (
-              filteredSongs.map((song, idx) => (
+              filteredSongs.map((song) => (
                 <div 
-                  key={`${song.id}-${idx}`}
+                  key={song.id}
                   className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between gap-4 hover:border-brand-primary/20 transition-all group"
                 >
                   <div className="flex items-center gap-4 min-w-0">
