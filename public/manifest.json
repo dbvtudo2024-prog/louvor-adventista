@@ -1,7 +1,7 @@
 {
   "name": "Louvor Adventista",
   "short_name": "Louvor",
-  "description": "Hinário e coletâneas de músicas adventistas com letras, áudio e suporte offline.",
+  "description": "Coletâneas de músicas adventistas com letras, áudio e suporte offline.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FDFCFB",

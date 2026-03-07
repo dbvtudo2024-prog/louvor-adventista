@@ -352,43 +352,7 @@ export default function App() {
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Hino não encontrado.</div>;
   }
 
-  if (configError) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm p-8 max-w-md mx-auto text-center">
-        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mb-6">
-          <AlertTriangle className="w-10 h-10 text-amber-600" />
-        </div>
-        <h2 className="text-2xl font-serif font-bold text-brand-primary mb-4">Configuração Necessária</h2>
-        <p className="text-slate-600 mb-8 leading-relaxed">
-          Para conectar o aplicativo ao seu banco de dados, você precisa adicionar as chaves do Supabase nos <strong>Secrets</strong> do AI Studio.
-        </p>
-        
-        <div className="w-full space-y-4 text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Variável 1</p>
-            <code className="text-sm font-mono text-brand-secondary break-all">VITE_SUPABASE_URL</code>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Variável 2</p>
-            <code className="text-sm font-mono text-brand-secondary break-all">VITE_SUPABASE_ANON_KEY</code>
-          </div>
-        </div>
-
-        <p className="text-sm text-slate-400 italic">
-          Após adicionar as chaves, o aplicativo carregará automaticamente.
-        </p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm max-w-md mx-auto">
-        <Loader2 className="w-12 h-12 text-brand-primary animate-spin mb-4" />
-        <p className="text-brand-primary font-serif italic">Preparando louvores...</p>
-      </div>
-    );
-  }
+  
 
   return (
     <div className="h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
