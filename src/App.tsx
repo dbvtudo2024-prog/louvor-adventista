@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -22,7 +22,9 @@ import {
   AlertTriangle,
   ExternalLink,
   Disc,
-  Monitor
+  Monitor,
+  ArrowUp,
+  Download
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
@@ -64,6 +66,37 @@ export default function App() {
   const [isProjecting, setIsProjecting] = useState(false);
   const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(false);
   const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    setShowScrollTop(scrollTop > 100);
+  };
+
+  const scrollToTop = () => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Handle Project Only Mode (for external window)
   useEffect(() => {
@@ -81,6 +114,8 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+    }).catch(err => {
+      console.error('Erro ao buscar sessão:', err);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -356,7 +391,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
+    <div className="h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
@@ -379,7 +414,11 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full">
+      <main 
+        ref={mainRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full"
+      >
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
@@ -678,7 +717,13 @@ export default function App() {
                       
                       <div className="flex items-center gap-2 shrink-0">
                         <button 
-                          onClick={() => setIsPlaying(!isPlaying)}
+                          onClick={() => {
+                            if (!isPlaying && !isProjecting) {
+                              const shouldProject = window.confirm("Deseja projetar a letra também?");
+                              if (shouldProject) setIsProjecting(true);
+                            }
+                            setIsPlaying(!isPlaying);
+                          }}
                           disabled={!selectedSong.audio_url}
                           className={cn(
                             "w-10 h-10 rounded-full text-white shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95",
@@ -689,7 +734,13 @@ export default function App() {
                           {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
                         </button>
                         <button 
-                          onClick={() => setIsProjecting(true)}
+                          onClick={() => {
+                            if (!isProjecting && !isPlaying && selectedSong.audio_url) {
+                              const shouldPlay = window.confirm("Deseja tocar o áudio também?");
+                              if (shouldPlay) setIsPlaying(true);
+                            }
+                            setIsProjecting(true);
+                          }}
                           className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 shadow-sm flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all active:scale-95"
                           title="Projetar Letra"
                         >
@@ -748,7 +799,6 @@ export default function App() {
           {view === 'admin' && user?.email === 'ronaldosonic@gmail.com' && (
             <AdminView 
               collections={collections} 
-              onBack={() => setView('home')} 
             />
           )}
         </AnimatePresence>
@@ -838,13 +888,27 @@ export default function App() {
                       </button>
                       {user?.email === 'ronaldosonic@gmail.com' && (
                         <button 
-                          onClick={() => { setMenuView('main'); setIsMenuOpen(false); setView('admin'); }}
+                          onClick={() => { setMenuView('main'); setIsMenuOpen(false); navigateTo('admin'); }}
                           className="flex items-center gap-4 w-full text-left text-slate-600 hover:text-brand-primary transition-colors p-2 rounded-lg hover:bg-slate-50"
                         >
                           <Library className="w-5 h-5" />
                           <span className="font-medium">Painel Administrativo</span>
                         </button>
                       )}
+                      
+                      {deferredPrompt && (
+                        <button 
+                          onClick={handleInstallClick}
+                          className="flex items-center gap-4 w-full text-left text-brand-primary transition-colors p-3 rounded-xl bg-brand-primary/5 border border-brand-primary/10 hover:bg-brand-primary/10"
+                        >
+                          <Download className="w-5 h-5" />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">Instalar Aplicativo</span>
+                            <span className="text-[10px] opacity-70">Acesse offline e mais rápido</span>
+                          </div>
+                        </button>
+                      )}
+
                       <div className="pt-6 border-t border-slate-100">
                         <p className="text-xs text-slate-400 mb-4 font-bold tracking-widest">CONTA</p>
                         {user ? (
@@ -1011,6 +1075,21 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+      {/* Scroll to Top Button */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: 20 }}
+            onClick={scrollToTop}
+            className="fixed bottom-8 right-8 z-[60] bg-brand-primary text-white p-4 rounded-full shadow-2xl hover:bg-brand-primary/90 transition-all active:scale-95 flex items-center justify-center group"
+          >
+            <ArrowUp className="w-8 h-8 group-hover:-translate-y-1 transition-transform" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Projection View */}
       <AnimatePresence>
         {isProjecting && selectedSong && (

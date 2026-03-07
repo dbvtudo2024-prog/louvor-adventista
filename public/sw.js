@@ -1,13 +1,8 @@
-/**
- * Service Worker for Offline Support
- */
 const CACHE_NAME = 'louvor-adventista-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/src/main.tsx',
-  '/src/App.tsx',
-  '/src/index.css',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {

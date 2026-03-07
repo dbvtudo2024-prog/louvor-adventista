@@ -9,7 +9,6 @@ import {
   FileText, 
   Link as LinkIcon, 
   Disc,
-  ChevronLeft,
   Loader2,
   CheckCircle2,
   Church,
@@ -38,10 +37,9 @@ const ICON_MAP: Record<string, any> = {
 
 interface AdminViewProps {
   collections: Collection[];
-  onBack: () => void;
 }
 
-export function AdminView({ collections, onBack }: AdminViewProps) {
+export function AdminView({ collections }: AdminViewProps) {
   const [adminMode, setAdminMode] = useState<'add' | 'manage'>('add');
   const [selectedCollectionId, setSelectedCollectionId] = useState(collections[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);

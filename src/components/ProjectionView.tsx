@@ -31,11 +31,12 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
   const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
 
   const phrases = useMemo(() => {
-    return song.lyrics
+    const lyricsPhrases = song.lyrics
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
-  }, [song.lyrics]);
+    return [song.title, ...lyricsPhrases];
+  }, [song.lyrics, song.title]);
 
   const nextPhrase = useCallback(() => {
     if (currentPhraseIndex < phrases.length - 1) {
@@ -74,8 +75,11 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
       if (e.key === 'ArrowRight' || e.key === ' ') nextPhrase();
       if (e.key === 'ArrowLeft') prevPhrase();
       if (e.key === 'Escape') {
-        if (isFullscreen) document.exitFullscreen();
-        else setShowConfirmClose(true);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          setShowConfirmClose(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -87,10 +91,10 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
     if (!elem) return;
 
     if (!document.fullscreenElement) {
-      elem.requestFullscreen();
+      elem.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
     }
   };
@@ -130,7 +134,12 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className="text-white text-center font-serif italic select-none drop-shadow-2xl"
+            className={cn(
+              "text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500",
+              currentPhraseIndex === 0 
+                ? "text-brand-secondary not-italic font-bold" 
+                : "text-white"
+            )}
             style={{ fontSize: 'clamp(2rem, 7vw, 6rem)', lineHeight: '1.2' }}
           >
             {phrases[currentPhraseIndex]}
@@ -185,8 +194,13 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
               )}
             >
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-mono opacity-50">{idx + 1}</span>
-                <span className="text-sm font-medium leading-tight">{phrase}</span>
+                <span className="text-[10px] font-mono opacity-50">{idx === 0 ? 'T' : idx}</span>
+                <span className={cn(
+                  "text-sm font-medium leading-tight",
+                  idx === 0 && "text-brand-secondary font-bold"
+                )}>
+                  {phrase}
+                </span>
               </div>
             </button>
           ))}
@@ -260,7 +274,9 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
                 </button>
                 <button 
                   onClick={() => {
-                    if (isFullscreen) document.exitFullscreen();
+                    if (document.fullscreenElement) {
+                      document.exitFullscreen().catch(() => {});
+                    }
                     onClose();
                   }}
                   className="flex-1 py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-transform active:scale-95"

@@ -12,11 +12,12 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
   const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
 
   const phrases = useMemo(() => {
-    return song.lyrics
+    const lyricsPhrases = song.lyrics
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
-  }, [song.lyrics]);
+    return [song.title, ...lyricsPhrases];
+  }, [song.lyrics, song.title]);
 
   useEffect(() => {
     channel.onmessage = (event) => {
@@ -40,7 +41,9 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 1.05 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className="text-white text-center font-serif italic select-none drop-shadow-2xl"
+          className={`text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500 ${
+            currentPhraseIndex === 0 ? "text-[#F27D26] not-italic font-bold" : "text-white"
+          }`}
           style={{ fontSize: 'clamp(2rem, 8vw, 8rem)', lineHeight: '1.2' }}
         >
           {phrases[currentPhraseIndex]}
