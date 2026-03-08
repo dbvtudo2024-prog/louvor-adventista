@@ -91,7 +91,13 @@ export function AdminView({ collections }: AdminViewProps) {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      setSongs(data || []);
+      
+      // Deduplicate songs by ID
+      const songsMap = new Map<string, Song>();
+      (data || []).forEach(song => {
+        songsMap.set(song.id, song);
+      });
+      setSongs(Array.from(songsMap.values()));
     } catch (error) {
       console.error('Error fetching songs:', error);
     } finally {

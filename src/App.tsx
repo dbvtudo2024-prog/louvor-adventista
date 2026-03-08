@@ -70,6 +70,8 @@ export default function App() {
   const [isProjecting, setIsProjecting] = useState(false);
   const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(false);
   const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(null);
+  const [isSlideMode, setIsSlideMode] = useState(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -92,6 +94,35 @@ export default function App() {
       setDeferredPrompt(null);
     }
   };
+
+  const slides = useMemo(() => {
+    if (!selectedSong) return [];
+    return selectedSong.lyrics.split('\n').filter(l => l.trim()).map(line => {
+      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      return {
+        timing: match ? parseInt(match[1]) : 0, // 0 means no auto-advance
+        text: match ? match[2] : line
+      };
+    });
+  }, [selectedSong]);
+
+  useEffect(() => {
+    let timer: any;
+    if (isSlideMode && slides.length > 0) {
+      const currentSlide = slides[currentSlideIndex];
+      if (currentSlide.timing > 0) {
+        timer = setTimeout(() => {
+          if (currentSlideIndex < slides.length - 1) {
+            setCurrentSlideIndex(prev => prev + 1);
+          } else {
+            setIsSlideMode(false);
+            setCurrentSlideIndex(0);
+          }
+        }, currentSlide.timing * 1000);
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [isSlideMode, currentSlideIndex, slides]);
 
   const handleScroll = (e: React.UIEvent<HTMLElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -206,7 +237,7 @@ export default function App() {
 
         const { data: sngs, error: sngsError } = await supabase
           .from('songs')
-          .select('id, collection_id, title, lyrics, audio_url, album_name, year, number');
+          .select('id, collection_id, title, lyrics, audio_url, cover_url, album_name, year, number');
         
         if (sngsError) throw sngsError;
         if (sngs && sngs.length > 0) {
@@ -507,7 +538,7 @@ export default function App() {
                     const Icon = ICON_MAP[collection.icon] || Music;
                     return (
                       <motion.button
-                        key={collection.id}
+                        key={`collection-${collection.id}`}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
@@ -551,9 +582,9 @@ export default function App() {
               {view === 'collection' && albums.length > 0 ? (
                 /* Album Grid (Image 2 Style) */
                 <div className="grid grid-cols-3 gap-3">
-                  {albums.map((album) => (
+                  {albums.map((album, idx) => (
                     <motion.button
-                      key={`${album.album}-${album.year}`}
+                      key={`album-${album.album}-${album.year}-${idx}`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => navigateTo('collection', { album })}
@@ -810,18 +841,82 @@ export default function App() {
                   )}
                 </div>
 
-                <div className={cn(
-                  "whitespace-pre-line text-center leading-relaxed text-brand-primary font-serif italic transition-all",
-                  fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl"
-                )}>
-                  {selectedSong.lyrics}
+                {/* Slide Mode Toggle */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => {
+                      setIsSlideMode(!isSlideMode);
+                      setCurrentSlideIndex(0);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest transition-all",
+                      isSlideMode ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    )}
+                  >
+                    <Monitor className="w-4 h-4" />
+                    {isSlideMode ? 'Sair do Modo Slides' : 'Modo Slides'}
+                  </button>
                 </div>
+
+                {isSlideMode ? (
+                  <div className="space-y-8 py-8">
+                    <div className="flex justify-center gap-2">
+                      {slides.map((_, idx) => (
+                        <div 
+                          key={idx} 
+                          className={cn(
+                            "h-1.5 rounded-full transition-all",
+                            idx === currentSlideIndex ? "w-8 bg-brand-primary" : "w-2 bg-slate-200"
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={currentSlideIndex}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className={cn(
+                          "text-center leading-relaxed text-brand-primary font-serif italic transition-all min-h-[150px] flex items-center justify-center",
+                          fontSize === 'sm' ? "text-2xl" : fontSize === 'md' ? "text-4xl" : "text-5xl"
+                        )}
+                      >
+                        {slides[currentSlideIndex]?.text}
+                      </motion.div>
+                    </AnimatePresence>
+                    <div className="flex justify-center gap-4">
+                      <button 
+                        onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))}
+                        disabled={currentSlideIndex === 0}
+                        className="p-4 rounded-full bg-slate-100 text-slate-400 disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                      >
+                        <SkipBack className="w-6 h-6" />
+                      </button>
+                      <button 
+                        onClick={() => setCurrentSlideIndex(Math.min(slides.length - 1, currentSlideIndex + 1))}
+                        disabled={currentSlideIndex === slides.length - 1}
+                        className="p-4 rounded-full bg-slate-100 text-slate-400 disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                      >
+                        <SkipForward className="w-6 h-6" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={cn(
+                    "whitespace-pre-line text-center leading-relaxed text-brand-primary font-serif italic transition-all",
+                    fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl"
+                  )}>
+                    {selectedSong.lyrics.replace(/\[\d+\]\s*/g, '')}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
 
           {view === 'admin' && user?.email === 'ronaldosonic@gmail.com' && (
             <AdminView 
+              key="admin-view"
               collections={collections} 
             />
           )}
@@ -853,8 +948,9 @@ export default function App() {
       {/* Side Menu Overlay */}
       <AnimatePresence>
         {isMenuOpen && (
-          <>
+          <div key="menu-container">
             <motion.div
+              key="menu-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -862,6 +958,7 @@ export default function App() {
               className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
             />
             <motion.div
+              key="menu-panel"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
@@ -1169,7 +1266,7 @@ export default function App() {
                 </p>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
       {/* Scroll to Top Button */}
