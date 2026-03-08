@@ -14,6 +14,7 @@ export interface Song {
   title: string;
   lyrics: string;
   audio_url?: string;
+  cover_url?: string;
   author?: string;
 }
 

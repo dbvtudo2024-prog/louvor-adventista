@@ -58,6 +58,7 @@ export function AdminView({ collections }: AdminViewProps) {
   const [lyrics, setLyrics] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [coverUrl, setCoverUrl] = useState('');
   const [albumName, setAlbumName] = useState('');
   const [year, setYear] = useState('');
   const [doxologiaCategory, setDoxologiaCategory] = useState('');
@@ -85,7 +86,7 @@ export function AdminView({ collections }: AdminViewProps) {
     try {
       const { data, error } = await supabase
         .from('songs')
-        .select('id, collection_id, title, lyrics, audio_url, album_name, year, number, created_at')
+        .select('id, collection_id, title, lyrics, audio_url, cover_url, album_name, year, number, created_at')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -124,6 +125,7 @@ export function AdminView({ collections }: AdminViewProps) {
     setTitle(song.title);
     setLyrics(song.lyrics);
     setAudioUrl(song.audio_url || '');
+    setCoverUrl(song.cover_url || '');
     setAlbumName(song.album_name || '');
     setYear(song.year?.toString() || '');
     
@@ -176,6 +178,7 @@ export function AdminView({ collections }: AdminViewProps) {
         title,
         lyrics,
         audio_url: finalAudioUrl || null,
+        cover_url: coverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
         user_id: user.id
@@ -203,6 +206,7 @@ export function AdminView({ collections }: AdminViewProps) {
       setTitle('');
       setLyrics('');
       setAudioUrl('');
+      setCoverUrl('');
       setAudioFile(null);
       setAlbumName('');
       setYear('');
@@ -337,6 +341,18 @@ export function AdminView({ collections }: AdminViewProps) {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Upload className="w-3 h-3" /> URL da Capa do Álbum
+                    </label>
+                    <input
+                      type="url"
+                      value={coverUrl}
+                      onChange={(e) => setCoverUrl(e.target.value)}
+                      placeholder="Ex: https://imagem.com/capa.jpg"
+                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                       <Calendar className="w-3 h-3" /> Ano de Lançamento
                     </label>
                     <input
@@ -371,6 +387,18 @@ export function AdminView({ collections }: AdminViewProps) {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Upload className="w-3 h-3" /> URL da Capa da Doxologia
+                    </label>
+                    <input
+                      type="url"
+                      value={coverUrl}
+                      onChange={(e) => setCoverUrl(e.target.value)}
+                      placeholder="Ex: https://imagem.com/doxologia.jpg"
+                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                    />
                   </div>
                 </>
               );
@@ -575,7 +603,11 @@ export function AdminView({ collections }: AdminViewProps) {
                 >
                   <div className="flex items-center gap-4 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
-                      <Music className="w-6 h-6" />
+                      {song.cover_url ? (
+                        <img src={song.cover_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <Music className="w-6 h-6" />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-bold text-slate-900 truncate">{song.title}</h3>

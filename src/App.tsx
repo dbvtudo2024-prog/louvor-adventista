@@ -52,7 +52,7 @@ export default function App() {
   const [configError, setConfigError] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
-  const [selectedAlbum, setSelectedAlbum] = useState<{ album: string, year: number | string } | null>(null);
+  const [selectedAlbum, setSelectedAlbum] = useState<{ album: string, year: number | string, cover_url?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -333,15 +333,18 @@ export default function App() {
     
     if (!isAlbumCollection) return [];
 
-    const grouped: Record<string, { album: string, year: number | string, songs: Song[] }> = {};
+    const grouped: Record<string, { album: string, year: number | string, cover_url?: string, songs: Song[] }> = {};
     songs.filter(s => s.collection_id === selectedCollection.id).forEach(song => {
       const key = `${song.album_name || 'Desconhecido'}-${song.year || ''}`;
       if (!grouped[key]) {
         grouped[key] = { 
           album: song.album_name || 'Desconhecido', 
           year: song.year || '', 
+          cover_url: song.cover_url,
           songs: [] 
         };
+      } else if (!grouped[key].cover_url && song.cover_url) {
+        grouped[key].cover_url = song.cover_url;
       }
       grouped[key].songs.push(song);
     });
@@ -558,7 +561,14 @@ export default function App() {
                     >
                       <div className="aspect-square bg-sky-400 rounded-xl overflow-hidden shadow-md border-2 border-white flex items-center justify-center relative group">
                         <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-50" />
-                        {album.album !== 'Desconhecido' ? (
+                        {album.cover_url ? (
+                          <img 
+                            src={album.cover_url} 
+                            alt={album.album}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : album.album !== 'Desconhecido' ? (
                           <div className="absolute inset-0 flex items-center justify-center p-2 bg-sky-500/10">
                             <span className="text-[10px] font-bold text-white text-center leading-tight drop-shadow-md uppercase tracking-tighter">
                               {album.album}
@@ -632,17 +642,31 @@ export default function App() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="relative">
+                    {selectedAlbum.cover_url && (
+                      <div className="w-full h-48 overflow-hidden">
+                        <img 
+                          src={selectedAlbum.cover_url} 
+                          alt={selectedAlbum.album}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      </div>
+                    )}
                     <div className={cn(
-                      "p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50"
+                      "p-6 border-b border-slate-100 flex items-center justify-between",
+                      selectedAlbum.cover_url ? "absolute bottom-0 left-0 right-0 bg-transparent border-none" : "bg-slate-50/50"
                     )}>
                       <div className="flex flex-col">
                         <h3 className={cn(
-                          "text-xl font-serif font-bold text-brand-primary"
+                          "text-xl font-serif font-bold",
+                          selectedAlbum.cover_url ? "text-white drop-shadow-md" : "text-brand-primary"
                         )}>
                           {selectedAlbum.album}
                         </h3>
                         <span className={cn(
-                          "text-xs font-bold uppercase tracking-widest text-sky-500"
+                          "text-xs font-bold uppercase tracking-widest",
+                          selectedAlbum.cover_url ? "text-white/80 drop-shadow-md" : "text-sky-500"
                         )}>
                           Ano: {selectedAlbum.year}
                         </span>
@@ -650,7 +674,10 @@ export default function App() {
                       <button 
                         onClick={() => setSelectedAlbum(null)}
                         className={cn(
-                          "w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-colors bg-white border-slate-100 text-slate-400 hover:text-brand-primary"
+                          "w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-colors",
+                          selectedAlbum.cover_url 
+                            ? "bg-white/20 backdrop-blur-md border-white/30 text-white hover:bg-white/40" 
+                            : "bg-white border-slate-100 text-slate-400 hover:text-brand-primary"
                         )}
                       >
                         <X className="w-5 h-5" />
