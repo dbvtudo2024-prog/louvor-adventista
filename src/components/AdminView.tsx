@@ -199,7 +199,8 @@ export function AdminView({ collections }: AdminViewProps) {
         audio_url: finalAudioUrl || null,
         cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
-        year: year ? parseInt(year) : null
+        year: year ? parseInt(year) : null,
+        user_id: user.id
       };
 
       console.log('Enviando dados da música:', songData);
@@ -231,11 +232,19 @@ export function AdminView({ collections }: AdminViewProps) {
       setYear('');
       setDoxologiaCategory('');
       
+      // Refresh songs list if in manage mode
+      if (adminMode === 'manage') {
+        fetchSongs();
+      }
+      
       setTimeout(() => setSuccess(false), 3000);
     } catch (error: any) {
       console.error('Error adding/updating song:', error);
       const errorMessage = error.message || 'Erro desconhecido';
-      alert(`Erro ao salvar música: ${errorMessage}\n\nVerifique se os buckets "audio" e "covers" existem e se as permissões (RLS) estão configuradas.`);
+      const errorDetails = error.details || '';
+      const errorCode = error.code || '';
+      
+      alert(`Erro ao salvar música: ${errorMessage}\n${errorDetails}\n(Código: ${errorCode})\n\nIsso geralmente acontece por falta de permissões (RLS) no Supabase. Verifique se a tabela "songs" permite INSERT/UPDATE para usuários autenticados.`);
     } finally {
       setIsSubmitting(false);
     }
