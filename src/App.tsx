@@ -47,6 +47,7 @@ export default function App() {
   const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
   const [songs, setSongs] = useState<Song[]>(MOCK_SONGS);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [configError, setConfigError] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
@@ -62,6 +63,8 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [audio] = useState(new Audio());
   const [isProjecting, setIsProjecting] = useState(false);
   const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(false);
@@ -110,12 +113,17 @@ export default function App() {
   // Handle Auth State
   useEffect(() => {
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) {
+      setIsCheckingSession(false);
+      return;
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     }).catch(err => {
       console.error('Erro ao buscar sessão:', err);
+    }).finally(() => {
+      setIsCheckingSession(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1040,8 +1048,10 @@ export default function App() {
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">E-mail</label>
                           <input 
                             type="email" 
+                            inputMode="email"
+                            autoComplete="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={(e) => { setEmail(e.target.value); setLoginError(null); }}
                             placeholder="seu@email.com"
                             className="w-full p-3 bg-white text-slate-900 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
                           />
@@ -1050,27 +1060,60 @@ export default function App() {
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Senha</label>
                           <input 
                             type="password" 
+                            autoComplete="current-password"
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={(e) => { setPassword(e.target.value); setLoginError(null); }}
                             placeholder="••••••••"
                             className="w-full p-3 bg-white text-slate-900 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
                           />
                         </div>
+                        
+                        {loginError && (
+                          <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-500 text-xs font-medium animate-shake">
+                            {loginError}
+                          </div>
+                        )}
                         <button 
+                          disabled={isLoggingIn}
                           onClick={async () => {
                             const sb = getSupabase();
                             if (!sb) return;
-                            const { error } = await sb.auth.signInWithPassword({ email, password });
-                            if (error) {
-                              // Se não existir, tenta cadastrar
-                              const { error: signUpError } = await sb.auth.signUp({ email, password });
-                              if (signUpError) alert(signUpError.message);
-                              else alert('Verifique seu e-mail para confirmar o cadastro!');
+                            
+                            setIsLoggingIn(true);
+                            setLoginError(null);
+                            try {
+                              const { error } = await sb.auth.signInWithPassword({ email, password });
+                              
+                              if (error) {
+                                // Se o erro for credenciais inválidas, avisa o usuário
+                                if (error.message.includes('Invalid login credentials')) {
+                                  setLoginError('E-mail ou senha incorretos.');
+                                } else {
+                                  // Tenta cadastrar se for outro erro (como usuário não encontrado)
+                                  const { error: signUpError } = await sb.auth.signUp({ email, password });
+                                  if (signUpError) {
+                                    setLoginError(signUpError.message);
+                                  } else {
+                                    alert('Verifique seu e-mail para confirmar o cadastro!');
+                                  }
+                                }
+                              }
+                            } catch (err: any) {
+                              setLoginError(`Erro inesperado: ${err.message}`);
+                            } finally {
+                              setIsLoggingIn(false);
                             }
                           }}
-                          className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20"
+                          className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          Entrar ou Cadastrar
+                          {isLoggingIn ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span>Entrando...</span>
+                            </>
+                          ) : (
+                            <span>Entrar ou Cadastrar</span>
+                          )}
                         </button>
                       </div>
                       <p className="text-[10px] text-slate-400 text-center leading-relaxed">
@@ -1112,7 +1155,11 @@ export default function App() {
             song={selectedSong}
             isPlaying={isPlaying}
             onTogglePlay={() => setIsPlaying(!isPlaying)}
-            onClose={() => setIsProjecting(false)}
+            onClose={() => {
+              setIsProjecting(false);
+              setIsPlaying(false);
+            }}
+            audioElement={audio}
           />
         )}
       </AnimatePresence>

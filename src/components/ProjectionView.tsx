@@ -20,13 +20,16 @@ interface ProjectionViewProps {
   onClose: () => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  audioElement?: HTMLAudioElement;
 }
 
-export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: ProjectionViewProps) {
+export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioElement }: ProjectionViewProps) {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
+  const [isAutoAdvance, setIsAutoAdvance] = useState(false);
+  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
   
   const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
 
@@ -86,6 +89,16 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [nextPhrase, prevPhrase, isFullscreen]);
 
+  useEffect(() => {
+    let interval: any;
+    if (isAutoAdvance && isPlaying && currentPhraseIndex < phrases.length - 1) {
+      interval = setInterval(() => {
+        nextPhrase();
+      }, autoAdvanceSeconds * 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds]);
+
   const toggleFullscreen = () => {
     const elem = document.getElementById('projection-content');
     if (!elem) return;
@@ -125,7 +138,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
       {/* Projection Screen (The "Big" Screen) */}
       <div 
         id="projection-content"
-        className="flex-1 relative bg-black flex items-center justify-center p-12 overflow-hidden"
+        className="h-[40vh] md:h-auto md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -135,19 +148,47 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
             className={cn(
-              "text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500",
+              "text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500 z-10",
               currentPhraseIndex === 0 
                 ? "text-brand-secondary not-italic font-bold" 
                 : "text-white"
             )}
-            style={{ fontSize: 'clamp(2rem, 7vw, 6rem)', lineHeight: '1.2' }}
+            style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
           >
             {phrases[currentPhraseIndex]}
           </motion.div>
         </AnimatePresence>
 
+        {/* Navigation Overlays (Touch/Click) */}
+        <div className="absolute inset-0 flex z-20">
+          <button 
+            onClick={prevPhrase}
+            disabled={currentPhraseIndex === 0}
+            className="flex-1 flex items-center justify-start p-4 opacity-0 hover:opacity-100 transition-opacity disabled:hidden"
+          >
+            <div className="bg-black/20 backdrop-blur-sm p-4 rounded-full text-white">
+              <ChevronLeft className="w-8 h-8" />
+            </div>
+          </button>
+          <button 
+            onClick={nextPhrase}
+            disabled={currentPhraseIndex === phrases.length - 1}
+            className="flex-1 flex items-center justify-end p-4 opacity-0 hover:opacity-100 transition-opacity disabled:hidden"
+          >
+            <div className="bg-black/20 backdrop-blur-sm p-4 rounded-full text-white">
+              <ChevronRight className="w-8 h-8" />
+            </div>
+          </button>
+        </div>
+
+        {/* Mobile Navigation Indicators (Always visible but subtle) */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:hidden pointer-events-none opacity-30">
+          <ChevronLeft className="w-6 h-6 text-white" />
+          <ChevronRight className="w-6 h-6 text-white" />
+        </div>
+
         {/* Controls Overlay (Subtle) */}
-        <div className="absolute bottom-6 right-6 flex gap-3">
+        <div className="absolute bottom-6 right-6 flex gap-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
             onClick={openExternalWindow}
             className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white/40 hover:text-white transition-all"
@@ -208,6 +249,42 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay }: Proje
 
         {/* Playback Controls */}
         <div className="p-6 bg-slate-900 border-t border-white/10 space-y-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
+                <span className="text-[9px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
+              </div>
+              <button 
+                onClick={() => setIsAutoAdvance(!isAutoAdvance)}
+                className={cn(
+                  "relative w-12 h-6 rounded-full transition-colors duration-300",
+                  isAutoAdvance ? "bg-brand-primary" : "bg-slate-700"
+                )}
+              >
+                <motion.div 
+                  className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                  animate={{ x: isAutoAdvance ? 24 : 0 }}
+                />
+              </button>
+            </div>
+            
+            {isAutoAdvance && (
+              <div className="flex items-center gap-3">
+                <input 
+                  type="range" 
+                  min="2" 
+                  max="15" 
+                  step="1"
+                  value={autoAdvanceSeconds}
+                  onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
+                  className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                />
+                <span className="text-[10px] font-mono text-slate-400 w-6">{autoAdvanceSeconds}s</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-center gap-6">
             <button 
               onClick={prevPhrase}
