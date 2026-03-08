@@ -57,9 +57,7 @@ export function AdminView({ collections }: AdminViewProps) {
   const [title, setTitle] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
-  const [coverUrl, setCoverUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [albumName, setAlbumName] = useState('');
   const [year, setYear] = useState('');
   const [doxologiaCategory, setDoxologiaCategory] = useState('');
@@ -87,7 +85,7 @@ export function AdminView({ collections }: AdminViewProps) {
     try {
       const { data, error } = await supabase
         .from('songs')
-        .select('*')
+        .select('id, collection_id, title, lyrics, audio_url, album_name, year, number, created_at')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -126,7 +124,6 @@ export function AdminView({ collections }: AdminViewProps) {
     setTitle(song.title);
     setLyrics(song.lyrics);
     setAudioUrl(song.audio_url || '');
-    setCoverUrl(song.cover_url || '');
     setAlbumName(song.album_name || '');
     setYear(song.year?.toString() || '');
     
@@ -155,7 +152,6 @@ export function AdminView({ collections }: AdminViewProps) {
       }
 
       let finalAudioUrl = audioUrl;
-      let finalCoverUrl = coverUrl;
 
       // Upload Audio File if exists
       if (audioFile) {
@@ -174,30 +170,12 @@ export function AdminView({ collections }: AdminViewProps) {
         finalAudioUrl = publicUrl;
       }
 
-      // Upload Cover File if exists
-      if (coverFile) {
-        const fileExt = coverFile.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('covers')
-          .upload(fileName, coverFile);
-
-        if (uploadError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabase.storage
-          .from('covers')
-          .getPublicUrl(fileName);
-        
-        finalCoverUrl = publicUrl;
-      }
-
       const songData: any = {
         collection_id: selectedCollectionId,
         number: number ? parseInt(number) : null,
         title,
         lyrics,
         audio_url: finalAudioUrl || null,
-        cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
         user_id: user.id
@@ -225,9 +203,7 @@ export function AdminView({ collections }: AdminViewProps) {
       setTitle('');
       setLyrics('');
       setAudioUrl('');
-      setCoverUrl('');
       setAudioFile(null);
-      setCoverFile(null);
       setAlbumName('');
       setYear('');
       setDoxologiaCategory('');
@@ -371,47 +347,6 @@ export function AdminView({ collections }: AdminViewProps) {
                       className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> Capa do Álbum
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                        id="cover-upload"
-                      />
-                      <label 
-                        htmlFor="cover-upload"
-                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
-                      >
-                        {coverFile ? (
-                          <span className="text-sm font-medium text-brand-primary truncate max-w-[200px]">
-                            {coverFile.name}
-                          </span>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-400">Escolher imagem...</span>
-                          </>
-                        )}
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                          <LinkIcon className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <input
-                          type="url"
-                          value={coverUrl}
-                          onChange={(e) => setCoverUrl(e.target.value)}
-                          placeholder="Ou cole a URL da imagem..."
-                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </>
               );
             }
@@ -436,47 +371,6 @@ export function AdminView({ collections }: AdminViewProps) {
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> Capa da Doxologia
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                        id="dox-cover-upload"
-                      />
-                      <label 
-                        htmlFor="dox-cover-upload"
-                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
-                      >
-                        {coverFile ? (
-                          <span className="text-sm font-medium text-brand-primary truncate max-w-[200px]">
-                            {coverFile.name}
-                          </span>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-400">Escolher imagem...</span>
-                          </>
-                        )}
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                          <LinkIcon className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <input
-                          type="url"
-                          value={coverUrl}
-                          onChange={(e) => setCoverUrl(e.target.value)}
-                          placeholder="Ou cole a URL da imagem..."
-                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
                   </div>
                 </>
               );
@@ -681,11 +575,7 @@ export function AdminView({ collections }: AdminViewProps) {
                 >
                   <div className="flex items-center gap-4 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
-                      {song.cover_url ? (
-                        <img src={song.cover_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Music className="w-6 h-6" />
-                      )}
+                      <Music className="w-6 h-6" />
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-bold text-slate-900 truncate">{song.title}</h3>
