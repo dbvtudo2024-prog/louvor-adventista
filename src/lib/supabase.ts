@@ -5,8 +5,11 @@ let supabaseInstance: SupabaseClient | null = null;
 export function getSupabase() {
   if (supabaseInstance) return supabaseInstance;
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : null);
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : null);
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const supabaseUrl = (envUrl && envUrl !== '') ? envUrl : 'https://xdwplwqpnsglaitedehu.supabase.co';
+  const supabaseAnonKey = (envKey && envKey !== '') ? envKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd3Bsd3FwbnNnbGFpdGVkZWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NjQ1OTEsImV4cCI6MjA4ODM0MDU5MX0.GupAMmWSDv39aeFwp0QfmYReClfGkz_DUsbAnGNADDY';
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return null;
