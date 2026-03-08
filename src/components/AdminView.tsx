@@ -22,7 +22,12 @@ import {
   Edit2,
   Search,
   Settings,
-  Clock
+  Clock,
+  Mic,
+  RotateCcw,
+  Undo2,
+  PlayCircle,
+  PauseCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getSupabase } from '../lib/supabase';
@@ -64,6 +69,18 @@ export function AdminView({ collections }: AdminViewProps) {
   const [year, setYear] = useState('');
   const [doxologiaCategory, setDoxologiaCategory] = useState('');
   const [showTimingEditor, setShowTimingEditor] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingCurrentLine, setRecordingCurrentLine] = useState(0);
+  const [recordedTimings, setRecordedTimings] = useState<number[]>([]);
+  const [recordingAudio] = useState(new Audio());
+  const [lastMarkTime, setLastMarkTime] = useState(0);
+
+  useEffect(() => {
+    return () => {
+      recordingAudio.pause();
+      recordingAudio.src = '';
+    };
+  }, [recordingAudio]);
 
   const DOXOLOGIA_CATEGORIES = [
     "Entrada da Plataforma",
@@ -78,6 +95,76 @@ export function AdminView({ collections }: AdminViewProps) {
       fetchSongs();
     }
   }, [adminMode]);
+
+  const startRecording = () => {
+    if (!audioUrl && !audioFile) {
+      alert('Adicione um áudio primeiro para gravar os tempos.');
+      return;
+    }
+    
+    const url = audioFile ? URL.createObjectURL(audioFile) : audioUrl;
+    recordingAudio.src = url;
+    recordingAudio.currentTime = 0;
+    recordingAudio.play().catch(err => {
+      console.warn('Audio play interrupted or blocked:', err);
+    });
+    
+    setIsRecording(true);
+    setRecordingCurrentLine(0);
+    setRecordedTimings([]);
+    setLastMarkTime(0);
+  };
+
+  const stopRecording = () => {
+    recordingAudio.pause();
+    setIsRecording(false);
+  };
+
+  const markTiming = () => {
+    const currentTime = recordingAudio.currentTime;
+    const duration = Math.round(currentTime - lastMarkTime);
+    
+    if (duration <= 0) return;
+
+    const newTimings = [...recordedTimings, duration];
+    setRecordedTimings(newTimings);
+    setLastMarkTime(currentTime);
+    
+    const lines = lyrics.split('\n');
+    if (recordingCurrentLine < lines.length - 1) {
+      setRecordingCurrentLine(prev => prev + 1);
+    } else {
+      // Finished recording all lines
+      applyRecordedTimings(newTimings);
+      stopRecording();
+    }
+  };
+
+  const undoLastTiming = () => {
+    if (recordedTimings.length === 0) return;
+    
+    const newTimings = recordedTimings.slice(0, -1);
+    setRecordedTimings(newTimings);
+    
+    // Reset audio to the time of the previous mark
+    const previousTotalTime = newTimings.reduce((acc, t) => acc + t, 0);
+    recordingAudio.currentTime = previousTotalTime;
+    setLastMarkTime(previousTotalTime);
+    setRecordingCurrentLine(prev => Math.max(0, prev - 1));
+  };
+
+  const applyRecordedTimings = (timings: number[]) => {
+    const lines = lyrics.split('\n');
+    let lineIdx = 0;
+    const newLines = lines.map(l => {
+      const t = timings[lineIdx] || 5;
+      const m = l.match(/^\[(\d+)\]\s*(.*)/);
+      const content = m ? m[2] : l;
+      lineIdx++;
+      return `[${t}] ${content}`;
+    });
+    setLyrics(newLines.join('\n'));
+  };
 
   const fetchSongs = async () => {
     const supabase = getSupabase();
@@ -130,7 +217,7 @@ export function AdminView({ collections }: AdminViewProps) {
     setSelectedCollectionId(song.collection_id);
     setNumber(song.number?.toString() || '');
     setTitle(song.title);
-    setLyrics(song.lyrics);
+    setLyrics(song.lyrics || '');
     setAudioUrl(song.audio_url || '');
     setCoverUrl(song.cover_url || '');
     setAlbumName(song.album_name || '');
@@ -153,7 +240,8 @@ export function AdminView({ collections }: AdminViewProps) {
     setSuccess(false);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
       if (!user) {
         alert('Você precisa estar logado para realizar esta ação.');
         setIsSubmitting(false);
@@ -173,11 +261,11 @@ export function AdminView({ collections }: AdminViewProps) {
 
         if (uploadError) throw uploadError;
         
-        const { data: { publicUrl } } = supabase.storage
+        const { data: publicUrlData } = supabase.storage
           .from('audio')
           .getPublicUrl(fileName);
         
-        finalAudioUrl = publicUrl;
+        finalAudioUrl = publicUrlData?.publicUrl || '';
       }
 
       // Upload Cover File if exists
@@ -190,11 +278,11 @@ export function AdminView({ collections }: AdminViewProps) {
 
         if (uploadError) throw uploadError;
         
-        const { data: { publicUrl } } = supabase.storage
+        const { data: publicUrlData } = supabase.storage
           .from('images')
           .getPublicUrl(fileName);
         
-        finalCoverUrl = publicUrl;
+        finalCoverUrl = publicUrlData?.publicUrl || '';
       }
 
       const songData: any = {
@@ -545,17 +633,108 @@ export function AdminView({ collections }: AdminViewProps) {
                       className="overflow-hidden"
                     >
                       <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Defina o tempo (em segundos) para cada slide:</p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
+                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider leading-tight">
+                            Defina o tempo (em segundos) para cada slide:
+                          </p>
+                          
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            {isRecording ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm('Deseja apagar toda a gravação atual?')) {
+                                      setRecordedTimings([]);
+                                      setRecordingCurrentLine(0);
+                                      recordingAudio.currentTime = 0;
+                                      setLastMarkTime(0);
+                                    }
+                                  }}
+                                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-red-500 transition-colors"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Reiniciar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={undoLastTiming}
+                                  disabled={recordedTimings.length === 0}
+                                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-brand-primary disabled:opacity-30 transition-colors"
+                                >
+                                  <Undo2 className="w-3.5 h-3.5" /> Desfazer
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={stopRecording}
+                                  className="flex items-center gap-1.5 text-[10px] font-bold text-red-500 uppercase tracking-widest hover:opacity-80 transition-opacity"
+                                >
+                                  <PauseCircle className="w-3.5 h-3.5" /> Parar
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={startRecording}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-brand-primary uppercase tracking-widest hover:opacity-80 transition-opacity bg-brand-primary/5 px-3 py-1.5 rounded-lg border border-brand-primary/10"
+                              >
+                                <Mic className="w-3.5 h-3.5" /> Gravar em Tempo Real
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {isRecording && (
+                          <div className="p-4 bg-brand-primary/5 rounded-xl border border-brand-primary/10 space-y-4 animate-pulse-subtle">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">Gravando Slide {recordingCurrentLine + 1} de {lyrics.split('\n').length}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-white p-4 rounded-lg border border-brand-primary/20 shadow-sm min-h-[60px] flex items-center justify-center">
+                              <p className="text-sm font-serif italic text-brand-primary text-center">
+                                {lyrics.split('\n')[recordingCurrentLine]?.replace(/\[\d+\]\s*/g, '') || '(Slide Vazio)'}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={markTiming}
+                              className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                            >
+                              <PlayCircle className="w-5 h-5" />
+                              Próxima Frase (Marcar Tempo)
+                            </button>
+                            
+                            <p className="text-[9px] text-slate-400 text-center italic">Clique no botão acima exatamente quando a frase terminar no áudio.</p>
+                          </div>
+                        )}
+
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                          {lyrics.split('\n').filter(l => l.trim()).map((line, idx) => {
+                          {lyrics.split('\n').map((line, idx) => {
                             const match = line.match(/^\[(\d+)\]\s*(.*)/);
                             const timing = match ? match[1] : '5';
                             const text = match ? match[2] : line;
                             
+                            const isCurrent = isRecording && idx === recordingCurrentLine;
+                            const isRecorded = isRecording && idx < recordingCurrentLine;
+
                             return (
-                              <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                              <div 
+                                key={idx} 
+                                className={cn(
+                                  "flex items-center gap-3 p-3 rounded-xl border transition-all",
+                                  isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md" : 
+                                  isRecorded ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"
+                                )}
+                              >
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs text-slate-500 truncate italic">"{text}"</p>
+                                  <p className={cn(
+                                    "text-xs truncate italic",
+                                    isCurrent ? "text-brand-primary font-bold" : "text-slate-500"
+                                  )}>{text || '(Slide Vazio)'}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <input
@@ -566,16 +745,11 @@ export function AdminView({ collections }: AdminViewProps) {
                                     onChange={(e) => {
                                       const newTiming = e.target.value || '5';
                                       const lines = lyrics.split('\n');
-                                      let lineCount = 0;
-                                      const newLines = lines.map(l => {
-                                        if (l.trim()) {
-                                          if (lineCount === idx) {
-                                            const m = l.match(/^\[(\d+)\]\s*(.*)/);
-                                            const content = m ? m[2] : l;
-                                            lineCount++;
-                                            return `[${newTiming}] ${content}`;
-                                          }
-                                          lineCount++;
+                                      const newLines = lines.map((l, lIdx) => {
+                                        if (lIdx === idx) {
+                                          const m = l.match(/^\[(\d+)\]\s*(.*)/);
+                                          const content = m ? m[2] : l;
+                                          return `[${newTiming}] ${content}`;
                                         }
                                         return l;
                                       });

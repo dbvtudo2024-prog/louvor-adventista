@@ -31,13 +31,56 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
   const [isAutoAdvance, setIsAutoAdvance] = useState(false);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
   
-  const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const currentIndexRef = useRef(currentPhraseIndex);
+
+  useEffect(() => {
+    currentIndexRef.current = currentPhraseIndex;
+  }, [currentPhraseIndex]);
+
+  const safePostMessage = useCallback((message: any) => {
+    if (channelRef.current) {
+      try {
+        channelRef.current.postMessage(message);
+      } catch (e) {
+        // Only log if it's not a "closed" error
+        if (!(e instanceof Error && e.message.includes('closed'))) {
+          console.error('Error posting message to channel:', e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(`projection-${song.id}`);
+      channelRef.current = channel;
+
+      channel.onmessage = (event) => {
+        if (event.data.type === 'SYNC_INDEX') {
+          setCurrentPhraseIndex(event.data.index);
+        } else if (event.data.type === 'REQUEST_SYNC') {
+          safePostMessage({ type: 'SYNC_INDEX', index: currentIndexRef.current });
+        }
+      };
+
+      // Force reset to 0 on mount and sync any external windows
+      setCurrentPhraseIndex(0);
+      safePostMessage({ type: 'SYNC_INDEX', index: 0 });
+
+      return () => {
+        channel.close();
+        channelRef.current = null;
+      };
+    }
+  }, [song.id, safePostMessage]);
 
   const phrasesWithTimings = useMemo(() => {
-    const lines = song.lyrics
+    if (!song) return [];
+    const lyrics = song.lyrics || '';
+    const lines = lyrics
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .map(line => line.trim());
     
     const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
@@ -47,8 +90,8 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
       return { timing: autoAdvanceSeconds, text: line };
     });
 
-    return [{ timing: autoAdvanceSeconds, text: song.title }, ...parsed];
-  }, [song.lyrics, song.title, autoAdvanceSeconds]);
+    return [{ timing: autoAdvanceSeconds, text: song.title || 'Sem Título' }, ...parsed];
+  }, [song?.lyrics, song?.title, autoAdvanceSeconds]);
 
   const phrases = useMemo(() => phrasesWithTimings.map(p => p.text), [phrasesWithTimings]);
 
@@ -56,42 +99,22 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
     if (currentPhraseIndex < phrases.length - 1) {
       const next = currentPhraseIndex + 1;
       setCurrentPhraseIndex(next);
-      channel.postMessage({ type: 'SYNC_INDEX', index: next });
+      safePostMessage({ type: 'SYNC_INDEX', index: next });
     }
-  }, [currentPhraseIndex, phrases.length, channel]);
+  }, [currentPhraseIndex, phrases.length, safePostMessage]);
 
   const prevPhrase = useCallback(() => {
     if (currentPhraseIndex > 0) {
       const prev = currentPhraseIndex - 1;
       setCurrentPhraseIndex(prev);
-      channel.postMessage({ type: 'SYNC_INDEX', index: prev });
+      safePostMessage({ type: 'SYNC_INDEX', index: prev });
     }
-  }, [currentPhraseIndex, channel]);
+  }, [currentPhraseIndex, safePostMessage]);
 
   const setIndex = useCallback((idx: number) => {
     setCurrentPhraseIndex(idx);
-    channel.postMessage({ type: 'SYNC_INDEX', index: idx });
-  }, [channel]);
-
-  const currentIndexRef = useRef(currentPhraseIndex);
-  useEffect(() => {
-    currentIndexRef.current = currentPhraseIndex;
-  }, [currentPhraseIndex]);
-
-  useEffect(() => {
-    // Force reset to 0 on mount and sync any external windows
-    setCurrentPhraseIndex(0);
-    channel.postMessage({ type: 'SYNC_INDEX', index: 0 });
-    
-    channel.onmessage = (event) => {
-      if (event.data.type === 'SYNC_INDEX') {
-        setCurrentPhraseIndex(event.data.index);
-      } else if (event.data.type === 'REQUEST_SYNC') {
-        channel.postMessage({ type: 'SYNC_INDEX', index: currentIndexRef.current });
-      }
-    };
-    return () => channel.close();
-  }, [channel]);
+    safePostMessage({ type: 'SYNC_INDEX', index: idx });
+  }, [safePostMessage]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -159,7 +182,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
       {/* Projection Screen (The "Big" Screen) */}
       <div 
         id="projection-content"
-        className="h-[40vh] md:h-auto md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
+        className="h-[50vh] min-h-[50vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -176,7 +199,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
             )}
             style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
           >
-            {phrases[currentPhraseIndex]}
+            {phrases[currentPhraseIndex] || ''}
           </motion.div>
         </AnimatePresence>
 
@@ -208,28 +231,28 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
           <ChevronRight className="w-6 h-6 text-white" />
         </div>
 
-        {/* Controls Overlay (Subtle) */}
-        <div className="absolute bottom-6 right-6 flex gap-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Controls Overlay (Always visible on mobile, hover on desktop) */}
+        <div className="absolute bottom-4 right-4 flex gap-2 z-30 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <button 
             onClick={openExternalWindow}
-            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white/40 hover:text-white transition-all"
+            className="p-3 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
             title="Abrir em nova janela"
           >
-            <Monitor className="w-6 h-6" />
+            <Monitor className="w-5 h-5 md:w-6 md:h-6" />
           </button>
           <button 
             onClick={toggleFullscreen}
-            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white/40 hover:text-white transition-all"
+            className="p-3 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
             title="Tela Cheia"
           >
-            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+            {isFullscreen ? <Minimize2 className="w-5 h-5 md:w-6 md:h-6" /> : <Maximize2 className="w-5 h-5 md:w-6 md:h-6" />}
           </button>
         </div>
       </div>
 
       {/* Operator Control Panel */}
-      <div className="w-full md:w-96 bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl z-10">
-        <div className="p-6 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full md:w-96 bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl z-10 flex-1 min-h-0">
+        <div className="p-4 md:p-6 border-b border-white/10 flex items-center justify-between">
           <div className="flex flex-col">
             <h3 className="text-white font-bold truncate max-w-[200px]">{song.title}</h3>
             <span className="text-xs text-slate-400 uppercase tracking-widest">Painel do Operador</span>
@@ -243,13 +266,13 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
         </div>
 
         {/* Lyrics Sequence */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide bg-slate-950/50">
+        <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1 md:space-y-2 scrollbar-hide bg-slate-950/50">
           {phrases.map((phrase, idx) => (
             <button
               key={idx}
               onClick={() => setIndex(idx)}
               className={cn(
-                "w-full text-left p-4 rounded-xl transition-all border",
+                "w-full text-left p-3 md:p-4 rounded-xl transition-all border",
                 idx === currentPhraseIndex 
                   ? "bg-brand-primary border-brand-primary text-white shadow-lg scale-[1.02]" 
                   : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
@@ -261,7 +284,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
                   "text-sm font-medium leading-tight",
                   idx === 0 && "text-brand-secondary font-bold"
                 )}>
-                  {phrase}
+                  {phrase || <span className="italic opacity-50">(Slide Vazio)</span>}
                 </span>
               </div>
             </button>
@@ -269,8 +292,8 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
         </div>
 
         {/* Playback Controls */}
-        <div className="p-6 bg-slate-900 border-t border-white/10 space-y-6">
-          <div className="flex flex-col gap-4">
+        <div className="p-4 md:p-6 bg-slate-900 border-t border-white/10 space-y-4 md:space-y-6">
+          <div className="flex flex-col gap-2 md:gap-4">
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
@@ -306,24 +329,24 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
             )}
           </div>
 
-          <div className="flex items-center justify-center gap-6">
+          <div className="flex items-center justify-center gap-4 md:gap-6">
             <button 
               onClick={prevPhrase}
               disabled={currentPhraseIndex === 0}
-              className="p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+              className="p-2 md:p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
             >
               <SkipBack className="w-6 h-6" />
             </button>
             <button 
               onClick={onTogglePlay}
-              className="w-16 h-16 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
+              className="w-12 h-12 md:w-16 md:h-16 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
             >
-              {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1" />}
+              {isPlaying ? <Pause className="w-6 h-6 md:w-8 md:h-8 fill-current" /> : <Play className="w-6 h-6 md:w-8 md:h-8 fill-current ml-1" />}
             </button>
             <button 
               onClick={nextPhrase}
               disabled={currentPhraseIndex === phrases.length - 1}
-              className="p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+              className="p-2 md:p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
             >
               <SkipForward className="w-6 h-6" />
             </button>

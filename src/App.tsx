@@ -88,16 +88,21 @@ export default function App() {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } catch (err) {
+      console.error('Erro ao instalar PWA:', err);
     }
   };
 
   const slides = useMemo(() => {
     if (!selectedSong) return [];
-    return selectedSong.lyrics.split('\n').filter(l => l.trim()).map(line => {
+    const lyrics = selectedSong.lyrics || '';
+    return lyrics.split('\n').map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
       return {
         timing: match ? parseInt(match[1]) : 0, // 0 means no auto-advance
@@ -150,7 +155,8 @@ export default function App() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then((response) => {
+      const session = response?.data?.session;
       setUser(session?.user ?? null);
     }).catch(err => {
       console.error('Erro ao buscar sessão:', err);
@@ -158,11 +164,11 @@ export default function App() {
       setIsCheckingSession(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
-    return () => subscription.unsubscribe();
+    return () => authListener?.subscription?.unsubscribe();
   }, []);
 
   // Audio effects
@@ -309,6 +315,11 @@ export default function App() {
   };
 
   const handleBack = () => {
+    // Reset modal/overlay states when navigating back
+    setIsProjecting(false);
+    setIsSlideMode(false);
+    setIsMenuOpen(false);
+    
     if (view === 'song') {
       window.history.back();
     } else if (view === 'collection') {
@@ -324,6 +335,11 @@ export default function App() {
   // Sync view state with browser history
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      // Reset modal/overlay states when navigating back
+      setIsProjecting(false);
+      setIsSlideMode(false);
+      setIsMenuOpen(false);
+      
       if (event.state?.view) {
         setView(event.state.view);
         if (event.state.selectedCollection) setSelectedCollection(event.state.selectedCollection);
@@ -343,6 +359,11 @@ export default function App() {
 
   // Wrap setView to push state
   const navigateTo = (newView: typeof view, data?: any) => {
+    // Reset modal/overlay states when navigating to a new view
+    setIsProjecting(false);
+    setIsSlideMode(false);
+    setIsMenuOpen(false);
+    
     const state = { 
       view: newView, 
       selectedCollection: data?.collection || selectedCollection,
@@ -609,8 +630,11 @@ export default function App() {
                           <Disc className="w-8 h-8 text-white/40" />
                         )}
                       </div>
-                      <div className="bg-white rounded-lg py-1 shadow-sm border border-slate-100">
-                        <span className="text-[10px] font-bold text-sky-500 text-center block tracking-tighter">
+                      <div className="bg-white rounded-lg py-1 shadow-sm border border-slate-100 flex flex-col items-center px-1">
+                        <span className="text-[10px] font-bold text-sky-500 text-center block tracking-tighter truncate w-full">
+                          {album.album}
+                        </span>
+                        <span className="text-[8px] font-medium text-slate-400 text-center block tracking-tighter">
                           {album.year || 'S/ Ano'}
                         </span>
                       </div>
@@ -1040,8 +1064,13 @@ export default function App() {
                             </div>
                             <button 
                               onClick={async () => {
-                                await getSupabase()?.auth.signOut();
-                                setMenuView('main');
+                                try {
+                                  await getSupabase()?.auth.signOut();
+                                  setMenuView('main');
+                                } catch (err) {
+                                  console.error('Erro ao sair:', err);
+                                  setMenuView('main');
+                                }
                               }}
                               className="w-full py-3 border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors"
                             >
@@ -1091,22 +1120,27 @@ export default function App() {
                             <button
                               onClick={async () => {
                                 if (confirm('Isso irá limpar o cache e recarregar o aplicativo. Continuar?')) {
-                                  // Unregister service workers
-                                  if ('serviceWorker' in navigator) {
-                                    const registrations = await navigator.serviceWorker.getRegistrations();
-                                    for (const registration of registrations) {
-                                      await registration.unregister();
+                                  try {
+                                    // Unregister service workers
+                                    if ('serviceWorker' in navigator) {
+                                      const registrations = await navigator.serviceWorker.getRegistrations();
+                                      for (const registration of registrations) {
+                                        await registration.unregister();
+                                      }
                                     }
-                                  }
-                                  // Clear caches
-                                  if ('caches' in window) {
-                                    const cacheNames = await caches.keys();
-                                    for (const name of cacheNames) {
-                                      await caches.delete(name);
+                                    // Clear caches
+                                    if ('caches' in window) {
+                                      const cacheNames = await caches.keys();
+                                      for (const name of cacheNames) {
+                                        await caches.delete(name);
+                                      }
                                     }
+                                    // Reload
+                                    window.location.reload();
+                                  } catch (err) {
+                                    console.error('Erro ao limpar cache:', err);
+                                    window.location.reload();
                                   }
-                                  // Reload
-                                  window.location.reload();
                                 }
                               }}
                               className="w-full py-4 bg-slate-50 text-slate-500 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
@@ -1277,9 +1311,9 @@ export default function App() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.5, y: 20 }}
             onClick={scrollToTop}
-            className="fixed bottom-8 right-8 z-[60] bg-brand-primary text-white p-4 rounded-full shadow-2xl hover:bg-brand-primary/90 transition-all active:scale-95 flex items-center justify-center group"
+            className="fixed bottom-6 right-6 z-40 bg-brand-primary text-white p-3 rounded-full shadow-xl hover:bg-brand-primary/90 transition-all active:scale-95 flex items-center justify-center group"
           >
-            <ArrowUp className="w-8 h-8 group-hover:-translate-y-1 transition-transform" />
+            <ArrowUp className="w-5 h-5 group-hover:-translate-y-1 transition-transform" />
           </motion.button>
         )}
       </AnimatePresence>

@@ -15,12 +15,23 @@ export function getSupabase() {
     return null;
   }
 
+  const isStorageAvailable = (() => {
+    try {
+      const key = '__test__';
+      window.localStorage.setItem(key, key);
+      window.localStorage.removeItem(key);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  })();
+
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      persistSession: true,
+      persistSession: isStorageAvailable,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: window.localStorage
+      storage: isStorageAvailable ? window.localStorage : undefined
     }
   });
   return supabaseInstance;

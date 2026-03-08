@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Song } from '../types';
 
@@ -9,13 +9,14 @@ interface ProjectedOnlyViewProps {
 export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   
-  const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
+  const channelRef = useRef<BroadcastChannel | null>(null);
 
   const phrases = useMemo(() => {
-    const lines = song.lyrics
+    if (!song) return ['Carregando...'];
+    const lyrics = song.lyrics || '';
+    const lines = lyrics
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .map(line => line.trim());
     
     const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
@@ -25,21 +26,36 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
       return line;
     });
 
-    return [song.title, ...parsed];
-  }, [song.lyrics, song.title]);
+    return [song.title || 'Sem Título', ...parsed];
+  }, [song?.lyrics, song?.title]);
 
   useEffect(() => {
-    channel.onmessage = (event) => {
-      if (event.data.type === 'SYNC_INDEX') {
-        setCurrentPhraseIndex(event.data.index);
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(`projection-${song.id}`);
+      channelRef.current = channel;
+
+      channel.onmessage = (event) => {
+        if (event.data.type === 'SYNC_INDEX') {
+          setCurrentPhraseIndex(event.data.index);
+        }
+      };
+      
+      // Request initial sync
+      try {
+        channel.postMessage({ type: 'REQUEST_SYNC' });
+      } catch (e) {
+        // Ignore "closed" errors
+        if (!(e instanceof Error && e.message.includes('closed'))) {
+          console.error('Error posting message to channel:', e);
+        }
       }
-    };
-    
-    // Request initial sync
-    channel.postMessage({ type: 'REQUEST_SYNC' });
-    
-    return () => channel.close();
-  }, [channel]);
+
+      return () => {
+        channel.close();
+        channelRef.current = null;
+      };
+    }
+  }, [song.id]);
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden">
@@ -55,7 +71,7 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
           }`}
           style={{ fontSize: 'clamp(2rem, 8vw, 8rem)', lineHeight: '1.2' }}
         >
-          {phrases[currentPhraseIndex]}
+          {phrases[currentPhraseIndex] || ''}
         </motion.div>
       </AnimatePresence>
     </div>
