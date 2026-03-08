@@ -145,6 +145,13 @@ export function AdminView({ collections }: AdminViewProps) {
     setSuccess(false);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Você precisa estar logado para realizar esta ação.');
+        setIsSubmitting(false);
+        return;
+      }
+
       let finalAudioUrl = audioUrl;
       let finalCoverUrl = coverUrl;
 
@@ -191,7 +198,7 @@ export function AdminView({ collections }: AdminViewProps) {
         cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
-        user_id: (await supabase.auth.getUser()).data.user?.id
+        user_id: user.id
       };
 
       if (editingSongId) {
