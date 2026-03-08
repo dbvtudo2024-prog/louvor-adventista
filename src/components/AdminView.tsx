@@ -58,6 +58,7 @@ export function AdminView({ collections }: AdminViewProps) {
   const [lyrics, setLyrics] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverUrl, setCoverUrl] = useState('');
   const [albumName, setAlbumName] = useState('');
   const [year, setYear] = useState('');
@@ -154,6 +155,7 @@ export function AdminView({ collections }: AdminViewProps) {
       }
 
       let finalAudioUrl = audioUrl;
+      let finalCoverUrl = coverUrl;
 
       // Upload Audio File if exists
       if (audioFile) {
@@ -172,13 +174,30 @@ export function AdminView({ collections }: AdminViewProps) {
         finalAudioUrl = publicUrl;
       }
 
+      // Upload Cover File if exists
+      if (coverFile) {
+        const fileExt = coverFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('images')
+          .upload(fileName, coverFile);
+
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('images')
+          .getPublicUrl(fileName);
+        
+        finalCoverUrl = publicUrl;
+      }
+
       const songData: any = {
         collection_id: selectedCollectionId,
         number: number ? parseInt(number) : null,
         title,
         lyrics,
         audio_url: finalAudioUrl || null,
-        cover_url: coverUrl || null,
+        cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
         user_id: user.id
@@ -208,6 +227,7 @@ export function AdminView({ collections }: AdminViewProps) {
       setAudioUrl('');
       setCoverUrl('');
       setAudioFile(null);
+      setCoverFile(null);
       setAlbumName('');
       setYear('');
       setDoxologiaCategory('');
@@ -341,15 +361,47 @@ export function AdminView({ collections }: AdminViewProps) {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> URL da Capa do Álbum
+                      <Upload className="w-3 h-3" /> Capa do Álbum
                     </label>
-                    <input
-                      type="url"
-                      value={coverUrl}
-                      onChange={(e) => setCoverUrl(e.target.value)}
-                      placeholder="Ex: https://imagem.com/capa.jpg"
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                    />
+                    <div className="flex flex-col gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="cover-upload"
+                      />
+                      <label 
+                        htmlFor="cover-upload"
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
+                      >
+                        {coverFile ? (
+                          <div className="flex items-center gap-3">
+                            <img src={URL.createObjectURL(coverFile)} className="w-8 h-8 rounded-lg object-cover" />
+                            <span className="text-sm font-medium text-brand-primary truncate max-w-[150px]">
+                              {coverFile.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-400">Escolher imagem...</span>
+                          </>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                          <LinkIcon className="w-3 h-3 text-slate-400" />
+                        </div>
+                        <input
+                          type="url"
+                          value={coverUrl}
+                          onChange={(e) => setCoverUrl(e.target.value)}
+                          placeholder="Ou cole a URL da imagem..."
+                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -390,15 +442,47 @@ export function AdminView({ collections }: AdminViewProps) {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> URL da Capa da Doxologia
+                      <Upload className="w-3 h-3" /> Capa da Doxologia
                     </label>
-                    <input
-                      type="url"
-                      value={coverUrl}
-                      onChange={(e) => setCoverUrl(e.target.value)}
-                      placeholder="Ex: https://imagem.com/doxologia.jpg"
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                    />
+                    <div className="flex flex-col gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="doxologia-cover-upload"
+                      />
+                      <label 
+                        htmlFor="doxologia-cover-upload"
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
+                      >
+                        {coverFile ? (
+                          <div className="flex items-center gap-3">
+                            <img src={URL.createObjectURL(coverFile)} className="w-8 h-8 rounded-lg object-cover" />
+                            <span className="text-sm font-medium text-brand-primary truncate max-w-[150px]">
+                              {coverFile.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-400">Escolher imagem...</span>
+                          </>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                          <LinkIcon className="w-3 h-3 text-slate-400" />
+                        </div>
+                        <input
+                          type="url"
+                          value={coverUrl}
+                          onChange={(e) => setCoverUrl(e.target.value)}
+                          placeholder="Ou cole a URL da imagem..."
+                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </>
               );
