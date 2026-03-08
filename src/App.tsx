@@ -941,7 +941,10 @@ export default function App() {
                               <p className="text-sm font-bold text-brand-primary truncate">{user.email}</p>
                             </div>
                             <button 
-                              onClick={() => getSupabase()?.auth.signOut()}
+                              onClick={async () => {
+                                await getSupabase()?.auth.signOut();
+                                setMenuView('main');
+                              }}
                               className="w-full py-3 border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors"
                             >
                               Sair da Conta
@@ -1097,6 +1100,9 @@ export default function App() {
                                     alert('Verifique seu e-mail para confirmar o cadastro!');
                                   }
                                 }
+                              } else {
+                                // Login bem-sucedido, volta para o menu principal
+                                setMenuView('main');
                               }
                             } catch (err: any) {
                               setLoginError(`Erro inesperado: ${err.message}`);

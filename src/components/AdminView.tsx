@@ -21,7 +21,8 @@ import {
   Trash2,
   Edit2,
   Search,
-  Settings
+  Settings,
+  Clock
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getSupabase } from '../lib/supabase';
@@ -62,6 +63,7 @@ export function AdminView({ collections }: AdminViewProps) {
   const [albumName, setAlbumName] = useState('');
   const [year, setYear] = useState('');
   const [doxologiaCategory, setDoxologiaCategory] = useState('');
+  const [showTimingEditor, setShowTimingEditor] = useState(false);
 
   const DOXOLOGIA_CATEGORIES = [
     "Entrada da Plataforma",
@@ -189,7 +191,7 @@ export function AdminView({ collections }: AdminViewProps) {
         finalCoverUrl = publicUrl;
       }
 
-      const songData = {
+      const songData: any = {
         collection_id: selectedCollectionId,
         number: number ? parseInt(number) : null,
         title,
@@ -197,9 +199,10 @@ export function AdminView({ collections }: AdminViewProps) {
         audio_url: finalAudioUrl || null,
         cover_url: finalCoverUrl || null,
         album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
-        year: year ? parseInt(year) : null,
-        user_id: user.id
+        year: year ? parseInt(year) : null
       };
+
+      console.log('Enviando dados da música:', songData);
 
       if (editingSongId) {
         const { error } = await supabase
@@ -229,9 +232,10 @@ export function AdminView({ collections }: AdminViewProps) {
       setDoxologiaCategory('');
       
       setTimeout(() => setSuccess(false), 3000);
-    } catch (error) {
-      console.error('Error adding song:', error);
-      alert('Erro ao adicionar música. Verifique se os buckets "audio" e "covers" existem no Supabase Storage.');
+    } catch (error: any) {
+      console.error('Error adding/updating song:', error);
+      const errorMessage = error.message || 'Erro desconhecido';
+      alert(`Erro ao salvar música: ${errorMessage}\n\nVerifique se os buckets "audio" e "covers" existem e se as permissões (RLS) estão configuradas.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -497,8 +501,79 @@ export function AdminView({ collections }: AdminViewProps) {
               value={lyrics}
               onChange={(e) => setLyrics(e.target.value)}
               placeholder="Digite a letra aqui..."
-              className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all resize-none"
+              className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all resize-none min-h-[200px]"
             />
+            
+            {lyrics.trim() && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowTimingEditor(!showTimingEditor)}
+                  className="flex items-center gap-2 text-xs font-bold text-brand-primary uppercase tracking-widest hover:opacity-80 transition-opacity"
+                >
+                  <Clock className="w-4 h-4" />
+                  {showTimingEditor ? 'Ocultar Editor de Tempos' : 'Configurar Tempos dos Slides'}
+                </button>
+
+                <AnimatePresence>
+                  {showTimingEditor && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Defina o tempo (em segundos) para cada slide:</p>
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                          {lyrics.split('\n').filter(l => l.trim()).map((line, idx) => {
+                            const match = line.match(/^\[(\d+)\]\s*(.*)/);
+                            const timing = match ? match[1] : '5';
+                            const text = match ? match[2] : line;
+                            
+                            return (
+                              <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-slate-500 truncate italic">"{text}"</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="60"
+                                    value={timing}
+                                    onChange={(e) => {
+                                      const newTiming = e.target.value || '5';
+                                      const lines = lyrics.split('\n');
+                                      let lineCount = 0;
+                                      const newLines = lines.map(l => {
+                                        if (l.trim()) {
+                                          if (lineCount === idx) {
+                                            const m = l.match(/^\[(\d+)\]\s*(.*)/);
+                                            const content = m ? m[2] : l;
+                                            lineCount++;
+                                            return `[${newTiming}] ${content}`;
+                                          }
+                                          lineCount++;
+                                        }
+                                        return l;
+                                      });
+                                      setLyrics(newLines.join('\n'));
+                                    }}
+                                    className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
 
           {/* Audio URL / File */}

@@ -12,11 +12,20 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
   const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
 
   const phrases = useMemo(() => {
-    const lyricsPhrases = song.lyrics
+    const lines = song.lyrics
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
-    return [song.title, ...lyricsPhrases];
+    
+    const parsed = lines.map(line => {
+      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      if (match) {
+        return match[2];
+      }
+      return line;
+    });
+
+    return [song.title, ...parsed];
   }, [song.lyrics, song.title]);
 
   useEffect(() => {

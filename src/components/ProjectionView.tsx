@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -33,13 +33,24 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
   
   const channel = useMemo(() => new BroadcastChannel(`projection-${song.id}`), [song.id]);
 
-  const phrases = useMemo(() => {
-    const lyricsPhrases = song.lyrics
+  const phrasesWithTimings = useMemo(() => {
+    const lines = song.lyrics
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
-    return [song.title, ...lyricsPhrases];
-  }, [song.lyrics, song.title]);
+    
+    const parsed = lines.map(line => {
+      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      if (match) {
+        return { timing: parseInt(match[1]), text: match[2] };
+      }
+      return { timing: autoAdvanceSeconds, text: line };
+    });
+
+    return [{ timing: autoAdvanceSeconds, text: song.title }, ...parsed];
+  }, [song.lyrics, song.title, autoAdvanceSeconds]);
+
+  const phrases = useMemo(() => phrasesWithTimings.map(p => p.text), [phrasesWithTimings]);
 
   const nextPhrase = useCallback(() => {
     if (currentPhraseIndex < phrases.length - 1) {
@@ -62,16 +73,25 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
     channel.postMessage({ type: 'SYNC_INDEX', index: idx });
   }, [channel]);
 
+  const currentIndexRef = useRef(currentPhraseIndex);
   useEffect(() => {
+    currentIndexRef.current = currentPhraseIndex;
+  }, [currentPhraseIndex]);
+
+  useEffect(() => {
+    // Force reset to 0 on mount and sync any external windows
+    setCurrentPhraseIndex(0);
+    channel.postMessage({ type: 'SYNC_INDEX', index: 0 });
+    
     channel.onmessage = (event) => {
       if (event.data.type === 'SYNC_INDEX') {
         setCurrentPhraseIndex(event.data.index);
       } else if (event.data.type === 'REQUEST_SYNC') {
-        channel.postMessage({ type: 'SYNC_INDEX', index: currentPhraseIndex });
+        channel.postMessage({ type: 'SYNC_INDEX', index: currentIndexRef.current });
       }
     };
     return () => channel.close();
-  }, [channel, currentPhraseIndex]);
+  }, [channel]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,14 +110,15 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
   }, [nextPhrase, prevPhrase, isFullscreen]);
 
   useEffect(() => {
-    let interval: any;
+    let timeout: any;
     if (isAutoAdvance && isPlaying && currentPhraseIndex < phrases.length - 1) {
-      interval = setInterval(() => {
+      const currentTiming = phrasesWithTimings[currentPhraseIndex]?.timing || autoAdvanceSeconds;
+      timeout = setTimeout(() => {
         nextPhrase();
-      }, autoAdvanceSeconds * 1000);
+      }, currentTiming * 1000);
     }
-    return () => clearInterval(interval);
-  }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds]);
+    return () => clearTimeout(timeout);
+  }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds, phrasesWithTimings]);
 
   const toggleFullscreen = () => {
     const elem = document.getElementById('projection-content');
