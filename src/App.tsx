@@ -24,7 +24,8 @@ import {
   Disc,
   Monitor,
   ArrowUp,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
@@ -935,34 +936,66 @@ export default function App() {
                     </motion.nav>
                   )}
 
-                  {menuView === 'settings' && (
-                    <motion.div 
-                      key="settings-menu"
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      className="space-y-8"
-                    >
-                      <section className="space-y-4">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tamanho da Letra</h4>
-                        <div className="flex bg-slate-50 p-1 rounded-xl shadow-inner">
-                          {(['sm', 'md', 'lg'] as const).map((size) => (
-                            <button
-                              key={size}
-                              onClick={() => setFontSize(size)}
-                              className={cn(
-                                "flex-1 py-2 rounded-lg text-sm font-bold transition-all",
-                                fontSize === size ? "bg-white text-brand-primary shadow-sm" : "text-slate-400"
-                              )}
-                            >
-                              {size === 'sm' ? 'Pequena' : size === 'md' ? 'Média' : 'Grande'}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
+                      {menuView === 'settings' && (
+                        <motion.div 
+                          key="settings-menu"
+                          initial={{ opacity: 0, x: 10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -10 }}
+                          className="space-y-8"
+                        >
+                          <section className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tamanho da Letra</h4>
+                            <div className="flex bg-slate-50 p-1 rounded-xl shadow-inner">
+                              {(['sm', 'md', 'lg'] as const).map((size) => (
+                                <button
+                                  key={size}
+                                  onClick={() => setFontSize(size)}
+                                  className={cn(
+                                    "flex-1 py-2 rounded-lg text-sm font-bold transition-all",
+                                    fontSize === size ? "bg-white text-brand-primary shadow-sm" : "text-slate-400"
+                                  )}
+                                >
+                                  {size === 'sm' ? 'Pequena' : size === 'md' ? 'Média' : 'Grande'}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
 
-                    </motion.div>
-                  )}
+                          <section className="space-y-4 pt-6 border-t border-slate-100">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Manutenção</h4>
+                            <button
+                              onClick={async () => {
+                                if (confirm('Isso irá limpar o cache e recarregar o aplicativo. Continuar?')) {
+                                  // Unregister service workers
+                                  if ('serviceWorker' in navigator) {
+                                    const registrations = await navigator.serviceWorker.getRegistrations();
+                                    for (const registration of registrations) {
+                                      await registration.unregister();
+                                    }
+                                  }
+                                  // Clear caches
+                                  if ('caches' in window) {
+                                    const cacheNames = await caches.keys();
+                                    for (const name of cacheNames) {
+                                      await caches.delete(name);
+                                    }
+                                  }
+                                  // Reload
+                                  window.location.reload();
+                                }
+                              }}
+                              className="w-full py-4 bg-slate-50 text-slate-500 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
+                            >
+                              <RefreshCw className="w-5 h-5" />
+                              Limpar Cache e Atualizar
+                            </button>
+                            <p className="text-[10px] text-slate-400 text-center px-4">
+                              Use esta opção se o aplicativo estiver apresentando erros ou não estiver atualizando.
+                            </p>
+                          </section>
+                        </motion.div>
+                      )}
 
                   {menuView === 'audio' && (
                     <motion.div 
