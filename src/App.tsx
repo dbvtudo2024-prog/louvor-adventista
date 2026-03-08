@@ -384,8 +384,23 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm max-w-md mx-auto">
-        <Loader2 className="w-12 h-12 text-brand-primary animate-spin mb-4" />
-        <p className="text-brand-primary font-serif italic">Preparando louvores...</p>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="mb-8"
+        >
+          <img 
+            src="https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/images/logo%20512.png" 
+            alt="Logo" 
+            className="w-48 h-48 object-contain drop-shadow-xl"
+            referrerPolicy="no-referrer"
+          />
+        </motion.div>
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
+          <p className="text-brand-primary font-serif italic text-lg">Preparando louvores...</p>
+        </div>
       </div>
     );
   }
