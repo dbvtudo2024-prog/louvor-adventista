@@ -1,19 +1,19 @@
 {
   "name": "Louvor Adventista",
   "short_name": "Louvor",
-  "description": "Coletâneas de músicas adventistas com letras, áudio e suporte offline.",
+  "description": "Hinário e coletâneas de músicas adventistas com letras, áudio e suporte offline.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FDFCFB",
   "theme_color": "#0C4A6E",
   "icons": [
     {
-      "src": "https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/covers/logo%20192.png",
+      "src": "https://picsum.photos/seed/church/192/192",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/covers/logo%20512.png",
+      "src": "https://picsum.photos/seed/church/512/512",
       "sizes": "512x512",
       "type": "image/png"
     }
