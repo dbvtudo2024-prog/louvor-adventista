@@ -153,7 +153,7 @@ export function AdminView({ collections }: AdminViewProps) {
     setRecordingCurrentLine(prev => Math.max(0, prev - 1));
   };
 
-  const applyRecordedTimings = (timings: number[]) => {
+  const applyRecordedTimings = async (timings: number[]) => {
     const lines = lyrics.split('\n');
     let lineIdx = 0;
     const newLines = lines.map(l => {
@@ -163,7 +163,20 @@ export function AdminView({ collections }: AdminViewProps) {
       lineIdx++;
       return `[${t}] ${content}`;
     });
-    setLyrics(newLines.join('\n'));
+    const updatedLyrics = newLines.join('\n');
+    setLyrics(updatedLyrics);
+
+    // If editing an existing song, save to DB in real-time
+    if (editingSongId) {
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+        } catch (e) {
+          console.error('Erro ao salvar tempos em tempo real:', e);
+        }
+      }
+    }
   };
 
   const fetchSongs = async () => {
@@ -742,7 +755,7 @@ export function AdminView({ collections }: AdminViewProps) {
                                     min="1"
                                     max="60"
                                     value={timing}
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                       const newTiming = e.target.value || '5';
                                       const lines = lyrics.split('\n');
                                       const newLines = lines.map((l, lIdx) => {
@@ -753,7 +766,20 @@ export function AdminView({ collections }: AdminViewProps) {
                                         }
                                         return l;
                                       });
-                                      setLyrics(newLines.join('\n'));
+                                      const updatedLyrics = newLines.join('\n');
+                                      setLyrics(updatedLyrics);
+
+                                      // If editing an existing song, save to DB in real-time
+                                      if (editingSongId) {
+                                        const supabase = getSupabase();
+                                        if (supabase) {
+                                          try {
+                                            await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+                                          } catch (e) {
+                                            console.error('Erro ao salvar tempo em tempo real:', e);
+                                          }
+                                        }
+                                      }
                                     }}
                                     className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
                                   />

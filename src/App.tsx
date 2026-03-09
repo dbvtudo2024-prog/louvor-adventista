@@ -286,6 +286,29 @@ export default function App() {
     }
   }, [isPlaying]);
 
+  const handleUpdateSong = async (updatedData: Partial<Song>) => {
+    if (!selectedSong) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase
+        .from('songs')
+        .update(updatedData)
+        .eq('id', selectedSong.id);
+      
+      if (error) throw error;
+
+      // Update local state
+      const updatedSong = { ...selectedSong, ...updatedData };
+      setSelectedSong(updatedSong);
+      setSongs(prev => prev.map(s => s.id === selectedSong.id ? updatedSong : s));
+    } catch (err) {
+      console.error('Erro ao atualizar música:', err);
+      throw err;
+    }
+  };
+
   // Filter songs based on collection and search
   const filteredSongs = useMemo(() => {
     let currentSongs = songs;
@@ -1325,6 +1348,7 @@ export default function App() {
             song={selectedSong}
             isPlaying={isPlaying}
             onTogglePlay={() => setIsPlaying(!isPlaying)}
+            onUpdateSong={handleUpdateSong}
             onClose={() => {
               setIsProjecting(false);
               setIsPlaying(false);

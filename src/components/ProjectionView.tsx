@@ -10,7 +10,9 @@ import {
   Minimize2,
   Monitor,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Save,
+  Loader2
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
@@ -20,16 +22,18 @@ interface ProjectionViewProps {
   onClose: () => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  onUpdateSong?: (updatedSong: Partial<Song>) => Promise<void>;
   audioElement?: HTMLAudioElement;
 }
 
-export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioElement }: ProjectionViewProps) {
+export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdateSong, audioElement }: ProjectionViewProps) {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
   const [isAutoAdvance, setIsAutoAdvance] = useState(false);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
+  const [isSavingTiming, setIsSavingTiming] = useState(false);
   
   const channelRef = useRef<BroadcastChannel | null>(null);
   const currentIndexRef = useRef(currentPhraseIndex);
@@ -143,6 +147,27 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
     return () => clearTimeout(timeout);
   }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds, phrasesWithTimings]);
 
+  const handleSaveTiming = async () => {
+    if (!onUpdateSong) return;
+    setIsSavingTiming(true);
+    try {
+      // Update all lines that don't have timing or update all to this new default
+      const lines = (song.lyrics || '').split('\n');
+      const newLyrics = lines.map(line => {
+        const match = line.match(/^\[(\d+)\]\s*(.*)/);
+        const content = match ? match[2] : line;
+        return `[${autoAdvanceSeconds}] ${content}`;
+      }).join('\n');
+      
+      await onUpdateSong({ lyrics: newLyrics });
+      alert('Tempo salvo com sucesso em todos os slides!');
+    } catch (err) {
+      console.error('Erro ao salvar tempo:', err);
+      alert('Erro ao salvar tempo.');
+    } finally {
+      setIsSavingTiming(false);
+    }
+  };
   const toggleFullscreen = () => {
     const elem = document.getElementById('projection-content');
     if (!elem) return;
@@ -202,34 +227,6 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
             {phrases[currentPhraseIndex] || ''}
           </motion.div>
         </AnimatePresence>
-
-        {/* Navigation Overlays (Touch/Click) */}
-        <div className="absolute inset-0 flex z-20">
-          <button 
-            onClick={prevPhrase}
-            disabled={currentPhraseIndex === 0}
-            className="flex-1 flex items-center justify-start p-4 opacity-0 hover:opacity-100 transition-opacity disabled:hidden"
-          >
-            <div className="bg-black/20 backdrop-blur-sm p-4 rounded-full text-white">
-              <ChevronLeft className="w-8 h-8" />
-            </div>
-          </button>
-          <button 
-            onClick={nextPhrase}
-            disabled={currentPhraseIndex === phrases.length - 1}
-            className="flex-1 flex items-center justify-end p-4 opacity-0 hover:opacity-100 transition-opacity disabled:hidden"
-          >
-            <div className="bg-black/20 backdrop-blur-sm p-4 rounded-full text-white">
-              <ChevronRight className="w-8 h-8" />
-            </div>
-          </button>
-        </div>
-
-        {/* Mobile Navigation Indicators (Always visible but subtle) */}
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:hidden pointer-events-none opacity-30">
-          <ChevronLeft className="w-6 h-6 text-white" />
-          <ChevronRight className="w-6 h-6 text-white" />
-        </div>
 
         {/* Controls Overlay (Always visible on mobile, hover on desktop) */}
         <div className="absolute bottom-4 right-4 flex gap-2 z-30 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -314,17 +311,29 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, audioEl
             </div>
             
             {isAutoAdvance && (
-              <div className="flex items-center gap-3">
-                <input 
-                  type="range" 
-                  min="2" 
-                  max="15" 
-                  step="1"
-                  value={autoAdvanceSeconds}
-                  onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
-                  className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-                />
-                <span className="text-[10px] font-mono text-slate-400 w-6">{autoAdvanceSeconds}s</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="2" 
+                    max="15" 
+                    step="1"
+                    value={autoAdvanceSeconds}
+                    onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
+                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                  />
+                  <span className="text-[10px] font-mono text-slate-400 w-6">{autoAdvanceSeconds}s</span>
+                </div>
+                {onUpdateSong && (
+                  <button
+                    onClick={handleSaveTiming}
+                    disabled={isSavingTiming}
+                    className="w-full py-2 bg-white/5 hover:bg-white/10 text-[10px] font-bold text-slate-400 uppercase tracking-widest rounded-lg border border-white/5 transition-all flex items-center justify-center gap-2"
+                  >
+                    {isSavingTiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Salvar este tempo em todos os slides
+                  </button>
+                )}
               </div>
             )}
           </div>
