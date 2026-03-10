@@ -130,12 +130,17 @@ export function AdminView({ collections }: AdminViewProps) {
     setRecordedTimings(newTimings);
     setLastMarkTime(currentTime);
     
-    const lines = lyrics.split('\n');
-    if (recordingCurrentLine < lines.length - 1) {
+    // Update lyrics in real-time so the list reflects the recording
+    applyRecordedTimings(newTimings);
+
+    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+    const totalSlides = lines.length + 1; // Title + Lyrics
+    
+    if (recordingCurrentLine < totalSlides - 1) {
       setRecordingCurrentLine(prev => prev + 1);
     } else {
       // Finished recording all lines
-      applyRecordedTimings(newTimings);
       stopRecording();
     }
   };
@@ -151,19 +156,37 @@ export function AdminView({ collections }: AdminViewProps) {
     recordingAudio.currentTime = previousTotalTime;
     setLastMarkTime(previousTotalTime);
     setRecordingCurrentLine(prev => Math.max(0, prev - 1));
+
+    // Update lyrics to reflect the undo
+    applyRecordedTimings(newTimings);
   };
 
   const applyRecordedTimings = async (timings: number[]) => {
-    const lines = lyrics.split('\n');
+    // timings array contains durations for title, then line 1, line 2, etc.
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+    const existingTitleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
+    
+    const titleTiming = timings[0] !== undefined ? timings[0] : existingTitleTiming;
+    const lyricsTimings = timings.slice(1);
+    
+    // Remove existing title timing tag if present
+    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+    
     let lineIdx = 0;
     const newLines = lines.map(l => {
-      const t = timings[lineIdx] || 5;
       const m = l.match(/^\[(\d+)\]\s*(.*)/);
+      const existingLineTiming = m ? m[1] : '5';
       const content = m ? m[2] : l;
+      
+      // Use recorded timing if available, otherwise keep existing
+      const t = lyricsTimings[lineIdx] !== undefined ? lyricsTimings[lineIdx] : existingLineTiming;
+      
       lineIdx++;
       return `[${t}] ${content}`;
     });
-    const updatedLyrics = newLines.join('\n');
+    
+    const updatedLyrics = `[T:${titleTiming}]\n${newLines.join('\n')}`;
     setLyrics(updatedLyrics);
 
     // If editing an existing song, save to DB in real-time
@@ -699,7 +722,13 @@ export function AdminView({ collections }: AdminViewProps) {
                         {isRecording && (
                           <div className="p-4 bg-brand-primary/5 rounded-xl border border-brand-primary/10 space-y-4 animate-pulse-subtle">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">Gravando Slide {recordingCurrentLine + 1} de {lyrics.split('\n').length}</span>
+                              <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">
+                                Gravando Slide {recordingCurrentLine + 1} de {(() => {
+                                  const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                  const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+                                  return lines.length + 1;
+                                })()}
+                              </span>
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                                 <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
@@ -708,7 +737,12 @@ export function AdminView({ collections }: AdminViewProps) {
                             
                             <div className="bg-white p-4 rounded-lg border border-brand-primary/20 shadow-sm min-h-[60px] flex items-center justify-center">
                               <p className="text-sm font-serif italic text-brand-primary text-center">
-                                {lyrics.split('\n')[recordingCurrentLine]?.replace(/\[\d+\]\s*/g, '') || '(Slide Vazio)'}
+                                {(() => {
+                                  if (recordingCurrentLine === 0) return title || 'Título';
+                                  const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                  const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+                                  return lines[recordingCurrentLine - 1]?.replace(/\[\d+\]\s*/g, '') || '(Slide Vazio)';
+                                })()}
                               </p>
                             </div>
 
@@ -726,68 +760,101 @@ export function AdminView({ collections }: AdminViewProps) {
                         )}
 
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                          {lyrics.split('\n').map((line, idx) => {
-                            const match = line.match(/^\[(\d+)\]\s*(.*)/);
-                            const timing = match ? match[1] : '5';
-                            const text = match ? match[2] : line;
+                          {(() => {
+                            const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+                            const titleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
+                            const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                            const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
                             
-                            const isCurrent = isRecording && idx === recordingCurrentLine;
-                            const isRecorded = isRecording && idx < recordingCurrentLine;
+                            const slides = [
+                              { text: title || 'Título', timing: titleTiming, isTitle: true, originalIndex: -1 },
+                              ...lines.map((l, idx) => {
+                                const match = l.match(/^\[(\d+)\]\s*(.*)/);
+                                return { 
+                                  text: match ? match[2] : l, 
+                                  timing: match ? match[1] : '5',
+                                  isTitle: false,
+                                  originalIndex: idx
+                                };
+                              })
+                            ];
 
-                            return (
-                              <div 
-                                key={idx} 
-                                className={cn(
-                                  "flex items-center gap-3 p-3 rounded-xl border transition-all",
-                                  isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md" : 
-                                  isRecorded ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"
-                                )}
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className={cn(
-                                    "text-xs truncate italic",
-                                    isCurrent ? "text-brand-primary font-bold" : "text-slate-500"
-                                  )}>{text || '(Slide Vazio)'}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max="60"
-                                    value={timing}
-                                    onChange={async (e) => {
-                                      const newTiming = e.target.value || '5';
-                                      const lines = lyrics.split('\n');
-                                      const newLines = lines.map((l, lIdx) => {
-                                        if (lIdx === idx) {
-                                          const m = l.match(/^\[(\d+)\]\s*(.*)/);
-                                          const content = m ? m[2] : l;
-                                          return `[${newTiming}] ${content}`;
+                            return slides.map((slide, idx) => {
+                              const isCurrent = isRecording && idx === recordingCurrentLine;
+                              const isRecorded = isRecording && idx < recordingCurrentLine;
+
+                              return (
+                                <div 
+                                  key={idx} 
+                                  className={cn(
+                                    "flex items-center gap-3 p-3 rounded-xl border transition-all",
+                                    isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md" : 
+                                    isRecorded ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"
+                                  )}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      {slide.isTitle && (
+                                        <span className="text-[8px] font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded uppercase tracking-widest">Título</span>
+                                      )}
+                                      <p className={cn(
+                                        "text-xs truncate italic",
+                                        isCurrent ? "text-brand-primary font-bold" : "text-slate-500"
+                                      )}>{slide.text || '(Slide Vazio)'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="60"
+                                      value={slide.timing}
+                                      onChange={async (e) => {
+                                        const newTiming = e.target.value || '5';
+                                        let updatedLyrics = '';
+                                        
+                                        if (slide.isTitle) {
+                                          const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                          updatedLyrics = `[T:${newTiming}]\n${cleanLyrics}`;
+                                        } else {
+                                          const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+                                          const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
+                                          const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                          const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+                                          
+                                          const newLines = lines.map((l, lIdx) => {
+                                            if (lIdx === slide.originalIndex) {
+                                              const m = l.match(/^\[(\d+)\]\s*(.*)/);
+                                              const content = m ? m[2] : l;
+                                              return `[${newTiming}] ${content}`;
+                                            }
+                                            return l;
+                                          });
+                                          updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}`;
                                         }
-                                        return l;
-                                      });
-                                      const updatedLyrics = newLines.join('\n');
-                                      setLyrics(updatedLyrics);
+                                        
+                                        setLyrics(updatedLyrics);
 
-                                      // If editing an existing song, save to DB in real-time
-                                      if (editingSongId) {
-                                        const supabase = getSupabase();
-                                        if (supabase) {
-                                          try {
-                                            await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
-                                          } catch (e) {
-                                            console.error('Erro ao salvar tempo em tempo real:', e);
+                                        // If editing an existing song, save to DB in real-time
+                                        if (editingSongId) {
+                                          const supabase = getSupabase();
+                                          if (supabase) {
+                                            try {
+                                              await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+                                            } catch (e) {
+                                              console.error('Erro ao salvar tempo em tempo real:', e);
+                                            }
                                           }
                                         }
-                                      }
-                                    }}
-                                    className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
-                                  />
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
+                                      }}
+                                      className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     </motion.div>

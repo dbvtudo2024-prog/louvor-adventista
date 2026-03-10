@@ -81,10 +81,19 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
 
   const phrasesWithTimings = useMemo(() => {
     if (!song) return [];
-    const lyrics = song.lyrics || '';
-    const lines = lyrics
+    let lyrics = song.lyrics || '';
+    
+    // Check for custom title timing [T:seconds]
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+    const titleTiming = titleTimingMatch ? parseInt(titleTimingMatch[1]) : autoAdvanceSeconds;
+    
+    // Remove the title timing tag if it exists for parsing the rest of the lines
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+\]\n?/, '') : lyrics;
+    
+    const lines = lyricsToParse
       .split('\n')
-      .map(line => line.trim());
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
     
     const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
@@ -94,7 +103,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       return { timing: autoAdvanceSeconds, text: line };
     });
 
-    return [{ timing: autoAdvanceSeconds, text: song.title || 'Sem Título' }, ...parsed];
+    return [{ timing: titleTiming, text: song.title || 'Sem Título' }, ...parsed];
   }, [song?.lyrics, song?.title, autoAdvanceSeconds]);
 
   const phrases = useMemo(() => phrasesWithTimings.map(p => p.text), [phrasesWithTimings]);
