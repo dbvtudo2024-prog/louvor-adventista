@@ -105,7 +105,7 @@ export default function App() {
     
     // Check for custom title timing [T:seconds]
     const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
-    const titleTiming = titleTimingMatch ? parseInt(titleTimingMatch[1]) : 0;
+    const titleTiming = titleTimingMatch ? parseInt(titleTimingMatch[1]) : 5;
     
     // Remove the title timing tag if it exists
     const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+\]\n?/, '') : lyrics;
@@ -118,7 +118,7 @@ export default function App() {
     const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
       return {
-        timing: match ? parseInt(match[1]) : 0,
+        timing: match ? parseInt(match[1]) : 5,
         text: match ? match[2] : line
       };
     });
@@ -128,7 +128,7 @@ export default function App() {
 
   useEffect(() => {
     let timer: any;
-    if (isSlideMode && slides.length > 0) {
+    if (isSlideMode && isPlaying && slides.length > 0) {
       const currentSlide = slides[currentSlideIndex];
       if (currentSlide.timing > 0) {
         timer = setTimeout(() => {
@@ -142,7 +142,7 @@ export default function App() {
       }
     }
     return () => clearTimeout(timer);
-  }, [isSlideMode, currentSlideIndex, slides]);
+  }, [isSlideMode, currentSlideIndex, slides, isPlaying]);
 
   const handleScroll = (e: React.UIEvent<HTMLElement>) => {
     const scrollTop = e.currentTarget.scrollTop;

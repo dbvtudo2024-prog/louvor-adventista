@@ -31,7 +31,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
-  const [isAutoAdvance, setIsAutoAdvance] = useState(false);
+  const [isAutoAdvance, setIsAutoAdvance] = useState(true);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
   const [isSavingTiming, setIsSavingTiming] = useState(false);
   
