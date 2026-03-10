@@ -114,11 +114,7 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isSlideMode || isProjecting) {
-          audio.pause();
-          audio.currentTime = 0;
-          setIsPlaying(false);
-          setIsSlideMode(false);
-          setIsProjecting(false);
+          handleBack();
           return;
         }
         if (isMenuOpen) {
@@ -126,7 +122,7 @@ export default function App() {
           return;
         }
         if (selectedAlbum) {
-          setSelectedAlbum(null);
+          handleBack();
           return;
         }
       }
@@ -433,57 +429,36 @@ export default function App() {
   };
 
   const handleBack = () => {
-    // Reset audio when leaving projection or slide mode
-    if (isProjecting || isSlideMode) {
-      audio.pause();
-      audio.currentTime = 0;
-      setIsPlaying(false);
-    }
-
-    // Reset modal/overlay states when navigating back
-    setIsProjecting(false);
-    setIsSlideMode(false);
-    setIsMenuOpen(false);
-    
-    if (view === 'song') {
-      audio.pause();
-      audio.currentTime = 0;
-      setIsPlaying(false);
-      window.history.back();
-    } else if (view === 'collection') {
-      if (selectedAlbum) setSelectedAlbum(null);
-      else window.history.back();
-    } else if (view === 'favorites' || view === 'admin') {
-      window.history.back();
-    } else {
-      setView('home');
-    }
+    window.history.back();
   };
 
   // Sync view state with browser history
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      // Reset audio when navigating back
-      audio.pause();
-      audio.currentTime = 0;
-      setIsPlaying(false);
-
-      // Reset modal/overlay states when navigating back
-      setIsProjecting(false);
-      setIsSlideMode(false);
-      setIsMenuOpen(false);
+      const state = event.state;
       
-      if (event.state?.view) {
-        setView(event.state.view);
-        if (event.state.selectedCollection) setSelectedCollection(event.state.selectedCollection);
-        if (event.state.selectedSong) setSelectedSong(event.state.selectedSong);
-        if (event.state.selectedAlbum) setSelectedAlbum(event.state.selectedAlbum);
+      // Stop audio if navigating away from song
+      if (!state || state.view !== 'song') {
+        audio.pause();
+        audio.currentTime = 0;
+        setIsPlaying(false);
+      }
+
+      if (state?.view) {
+        setView(state.view);
+        setSelectedCollection(state.selectedCollection || null);
+        setSelectedSong(state.selectedSong || null);
+        setSelectedAlbum(state.selectedAlbum || null);
       } else {
         setView('home');
         setSelectedCollection(null);
         setSelectedSong(null);
         setSelectedAlbum(null);
       }
+      
+      setIsMenuOpen(false);
+      setIsProjecting(false);
+      setIsSlideMode(false);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -499,15 +474,17 @@ export default function App() {
     
     const state = { 
       view: newView, 
-      selectedCollection: data?.collection || selectedCollection,
-      selectedSong: data?.song || selectedSong,
-      selectedAlbum: data?.album || selectedAlbum
+      selectedCollection: data?.collection || (newView === 'home' ? null : selectedCollection),
+      selectedSong: data?.song || null,
+      selectedAlbum: data?.album || (newView === 'song' ? selectedAlbum : null)
     };
+    
     window.history.pushState(state, '', '');
+    
     setView(newView);
-    if (data?.collection) setSelectedCollection(data.collection);
-    if (data?.song) setSelectedSong(data.song);
-    if (data?.album) setSelectedAlbum(data.album);
+    setSelectedCollection(state.selectedCollection);
+    setSelectedSong(state.selectedSong);
+    setSelectedAlbum(state.selectedAlbum);
   };
 
   const albums = useMemo(() => {
@@ -865,7 +842,7 @@ export default function App() {
                         </span>
                       </div>
                       <button 
-                        onClick={() => setSelectedAlbum(null)}
+                        onClick={handleBack}
                         className={cn(
                           "w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-colors",
                           selectedAlbum.cover_url 
