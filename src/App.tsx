@@ -205,7 +205,13 @@ export default function App() {
   useEffect(() => {
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleLoadedMetadata = () => setDuration(audio.duration);
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setIsProjecting(false);
+      setIsSlideMode(false);
+      setCurrentSlideIndex(0);
+      audio.currentTime = 0;
+    };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);

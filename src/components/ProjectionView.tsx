@@ -37,6 +37,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const wakeLockRef = useRef<any>(null);
+  const externalWindowRef = useRef<Window | null>(null);
   
   const channelRef = useRef<BroadcastChannel | null>(null);
   const currentIndexRef = useRef(currentPhraseIndex);
@@ -84,6 +85,10 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       if (wakeLockRef.current) {
         wakeLockRef.current.release();
         wakeLockRef.current = null;
+      }
+      if (externalWindowRef.current) {
+        externalWindowRef.current.close();
+        externalWindowRef.current = null;
       }
     };
   }, []);
@@ -266,6 +271,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     );
     
     if (externalWindow) {
+      externalWindowRef.current = externalWindow;
       setIsExternalWindowOpen(true);
     } else {
       alert('O bloqueador de pop-ups impediu a abertura da tela de projeção. Por favor, autorize pop-ups para este site.');
