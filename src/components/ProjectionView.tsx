@@ -137,7 +137,8 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       return { timing: autoAdvanceSeconds, text: line };
     });
 
-    return [{ timing: titleTiming, text: song.title || 'Sem Título' }, ...parsed];
+    const allPhrases = [{ timing: titleTiming, text: song.title || 'Sem Título' }, ...parsed];
+    return [...allPhrases, { timing: 0, text: '' }];
   }, [song?.lyrics, song?.title, autoAdvanceSeconds]);
 
   const phrases = useMemo(() => phrasesWithTimings.map(p => p.text), [phrasesWithTimings]);

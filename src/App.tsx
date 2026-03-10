@@ -132,7 +132,8 @@ export default function App() {
       };
     });
 
-    return [{ timing: titleTiming, text: selectedSong.title || 'Sem Título' }, ...parsed];
+    const allSlides = [{ timing: titleTiming, text: selectedSong.title || 'Sem Título' }, ...parsed];
+    return [...allSlides, { timing: 0, text: '' }];
   }, [selectedSong]);
 
   useEffect(() => {

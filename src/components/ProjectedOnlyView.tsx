@@ -33,7 +33,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
       return line;
     });
 
-    return [song.title || 'Sem Título', ...parsed];
+    const allPhrases = [song.title || 'Sem Título', ...parsed];
+    return [...allPhrases, ''];
   }, [song?.lyrics, song?.title]);
 
   useEffect(() => {
