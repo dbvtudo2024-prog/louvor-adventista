@@ -6,17 +6,8 @@
     <title>Louvor Adventista</title>
     <link rel="icon" type="image/png" href="https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/images/logo%20192.png" />
     <link rel="apple-touch-icon" href="https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/images/logo%20192.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0C4A6E" />
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('SW registered!', reg))
-            .catch(err => console.log('SW registration failed: ', err));
-        });
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>

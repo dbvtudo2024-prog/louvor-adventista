@@ -25,7 +25,8 @@ import {
   Monitor,
   ArrowUp,
   Download,
-  RefreshCw
+  RefreshCw,
+  WifiOff
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
@@ -83,7 +84,21 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -575,8 +590,13 @@ export default function App() {
              view === 'song' ? (collections.find(c => c.id === selectedSong?.collection_id)?.name || 'Música') :
              view === 'admin' ? 'Administração' : 'Louvor'}
           </h1>
-          <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-black/5 rounded-full transition-colors">
+          <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-black/5 rounded-full transition-colors relative">
             <Menu className="w-6 h-6 text-brand-primary" />
+            {!isOnline && (
+              <div className="absolute -top-0.5 -right-0.5 bg-amber-500 rounded-full p-1 border-2 border-white shadow-sm">
+                <WifiOff className="w-2.5 h-2.5 text-white" />
+              </div>
+            )}
           </button>
         </div>
       </header>
@@ -646,7 +666,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pb-12">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pb-12">
                   {collections.map((collection) => {
                     const Icon = ICON_MAP[collection.icon] || Music;
                     return (
@@ -694,7 +714,7 @@ export default function App() {
 
               {view === 'collection' && albums.length > 0 ? (
                 /* Album Grid (Image 2 Style) */
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                   {albums.map((album, idx) => (
                     <motion.button
                       key={`album-${album.album}-${album.year}-${idx}`}
@@ -1120,6 +1140,18 @@ export default function App() {
                   <X className="w-6 h-6 text-slate-400" />
                 </button>
               </div>
+
+              {!isOnline && (
+                <div className="mx-6 mb-6 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <WifiOff className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-amber-800">Modo Offline</p>
+                    <p className="text-[10px] text-amber-600">Acesso limitado a hinos já carregados.</p>
+                  </div>
+                </div>
+              )}
               
               <div className="flex-1 overflow-y-auto scrollbar-hide">
                 <AnimatePresence mode="wait">
