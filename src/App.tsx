@@ -385,12 +385,22 @@ export default function App() {
   };
 
   const handleBack = () => {
+    // Reset audio when leaving projection or slide mode
+    if (isProjecting || isSlideMode) {
+      audio.pause();
+      audio.currentTime = 0;
+      setIsPlaying(false);
+    }
+
     // Reset modal/overlay states when navigating back
     setIsProjecting(false);
     setIsSlideMode(false);
     setIsMenuOpen(false);
     
     if (view === 'song') {
+      audio.pause();
+      audio.currentTime = 0;
+      setIsPlaying(false);
       window.history.back();
     } else if (view === 'collection') {
       if (selectedAlbum) setSelectedAlbum(null);
@@ -405,6 +415,11 @@ export default function App() {
   // Sync view state with browser history
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      // Reset audio when navigating back
+      audio.pause();
+      audio.currentTime = 0;
+      setIsPlaying(false);
+
       // Reset modal/overlay states when navigating back
       setIsProjecting(false);
       setIsSlideMode(false);
@@ -954,6 +969,11 @@ export default function App() {
                 <div className="flex justify-center">
                   <button
                     onClick={() => {
+                      if (isSlideMode) {
+                        audio.pause();
+                        audio.currentTime = 0;
+                        setIsPlaying(false);
+                      }
                       setIsSlideMode(!isSlideMode);
                       setCurrentSlideIndex(0);
                     }}
@@ -1416,6 +1436,7 @@ export default function App() {
             onClose={() => {
               setIsProjecting(false);
               setIsPlaying(false);
+              audio.currentTime = 0;
             }}
             audioElement={audio}
           />
