@@ -712,7 +712,7 @@ export default function App() {
                 />
               </div>
 
-              {view === 'collection' && albums.length > 0 ? (
+              {view === 'collection' && albums.length > 0 && !searchQuery ? (
                 /* Album Grid (Image 2 Style) */
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                   {albums.map((album, idx) => (
