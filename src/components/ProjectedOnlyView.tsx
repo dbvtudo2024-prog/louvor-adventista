@@ -6,17 +6,23 @@ interface ProjectedOnlyViewProps {
   song: Song;
 }
 
-export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
+export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps) {
+  const [song, setSong] = useState(initialSong);
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   const phrases = useMemo(() => {
     if (!song) return ['Carregando...'];
-    const lyrics = song.lyrics || '';
-    const lines = lyrics
+    let lyrics = song.lyrics || '';
+    
+    // Remove title timing tag if present
+    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    
+    const lines = cleanLyrics
       .split('\n')
-      .map(line => line.trim());
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
     
     const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
@@ -31,12 +37,14 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
 
   useEffect(() => {
     if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel(`projection-${song.id}`);
+      const channel = new BroadcastChannel(`projection-${initialSong.id}`);
       channelRef.current = channel;
 
       channel.onmessage = (event) => {
         if (event.data.type === 'SYNC_INDEX') {
           setCurrentPhraseIndex(event.data.index);
+        } else if (event.data.type === 'SONG_UPDATED') {
+          setSong(event.data.song);
         }
       };
       
@@ -55,7 +63,7 @@ export function ProjectedOnlyView({ song }: ProjectedOnlyViewProps) {
         channelRef.current = null;
       };
     }
-  }, [song.id]);
+  }, [initialSong.id]);
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden">

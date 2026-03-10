@@ -71,13 +71,14 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       // Force reset to 0 on mount and sync any external windows
       setCurrentPhraseIndex(0);
       safePostMessage({ type: 'SYNC_INDEX', index: 0 });
+      safePostMessage({ type: 'SONG_UPDATED', song });
 
       return () => {
         channel.close();
         channelRef.current = null;
       };
     }
-  }, [song.id, safePostMessage]);
+  }, [song.id, safePostMessage, song]);
 
   const phrasesWithTimings = useMemo(() => {
     if (!song) return [];

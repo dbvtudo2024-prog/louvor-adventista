@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Save, 
@@ -43,9 +43,10 @@ const ICON_MAP: Record<string, any> = {
 
 interface AdminViewProps {
   collections: Collection[];
+  onSongUpdated?: () => void;
 }
 
-export function AdminView({ collections }: AdminViewProps) {
+export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const [adminMode, setAdminMode] = useState<'add' | 'manage'>('add');
   const [selectedCollectionId, setSelectedCollectionId] = useState(collections[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,6 +75,18 @@ export function AdminView({ collections }: AdminViewProps) {
   const [recordedTimings, setRecordedTimings] = useState<number[]>([]);
   const [recordingAudio] = useState(new Audio());
   const [lastMarkTime, setLastMarkTime] = useState(0);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    if (editingSongId && typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(`projection-${editingSongId}`);
+      channelRef.current = channel;
+      return () => {
+        channel.close();
+        channelRef.current = null;
+      };
+    }
+  }, [editingSongId]);
 
   useEffect(() => {
     return () => {
@@ -195,6 +208,15 @@ export function AdminView({ collections }: AdminViewProps) {
       if (supabase) {
         try {
           await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+          if (onSongUpdated) onSongUpdated();
+          
+          // Notify external windows
+          if (channelRef.current) {
+            channelRef.current.postMessage({ 
+              type: 'SONG_UPDATED', 
+              song: { id: editingSongId, lyrics: updatedLyrics, title } 
+            });
+          }
         } catch (e) {
           console.error('Erro ao salvar tempos em tempo real:', e);
         }
@@ -349,6 +371,7 @@ export function AdminView({ collections }: AdminViewProps) {
       }
 
       setSuccess(true);
+      if (onSongUpdated) onSongUpdated();
       // Reset form
       setEditingSongId(null);
       setNumber('');
@@ -841,6 +864,15 @@ export function AdminView({ collections }: AdminViewProps) {
                                           if (supabase) {
                                             try {
                                               await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+                                              if (onSongUpdated) onSongUpdated();
+
+                                              // Notify external windows
+                                              if (channelRef.current) {
+                                                channelRef.current.postMessage({ 
+                                                  type: 'SONG_UPDATED', 
+                                                  song: { id: editingSongId, lyrics: updatedLyrics, title } 
+                                                });
+                                              }
                                             } catch (e) {
                                               console.error('Erro ao salvar tempo em tempo real:', e);
                                             }

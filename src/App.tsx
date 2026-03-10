@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -101,14 +101,29 @@ export default function App() {
 
   const slides = useMemo(() => {
     if (!selectedSong) return [];
-    const lyrics = selectedSong.lyrics || '';
-    return lyrics.split('\n').map(line => {
+    let lyrics = selectedSong.lyrics || '';
+    
+    // Check for custom title timing [T:seconds]
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+    const titleTiming = titleTimingMatch ? parseInt(titleTimingMatch[1]) : 0;
+    
+    // Remove the title timing tag if it exists
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+\]\n?/, '') : lyrics;
+    
+    const lines = lyricsToParse
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+    
+    const parsed = lines.map(line => {
       const match = line.match(/^\[(\d+)\]\s*(.*)/);
       return {
-        timing: match ? parseInt(match[1]) : 0, // 0 means no auto-advance
+        timing: match ? parseInt(match[1]) : 0,
         text: match ? match[2] : line
       };
     });
+
+    return [{ timing: titleTiming, text: selectedSong.title || 'Sem Título' }, ...parsed];
   }, [selectedSong]);
 
   useEffect(() => {
@@ -178,90 +193,97 @@ export default function App() {
   }, [volume, playbackRate, audio]);
 
   // Fetch data from Supabase
-  useEffect(() => {
-    async function fetchData() {
-      const supabase = getSupabase();
-      
-      if (!supabase) {
-        setConfigError(true);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        
-        const { data: cols, error: colsError } = await supabase
-          .from('collections')
-          .select('*');
-        
-        if (colsError) throw colsError;
-        
-        // Create a map of existing collections by ID to ensure uniqueness
-        const collectionsMap = new Map<string, Collection>();
-        
-        // 1. Add DB collections first (they are the source of truth)
-        if (cols && cols.length > 0) {
-          cols.forEach(col => {
-            collectionsMap.set(col.id, col);
-          });
-        }
-        
-        // 2. Add Mocks only if they don't exist by ID or Name
-        MOCK_COLLECTIONS.forEach(mock => {
-          const existingById = collectionsMap.get(mock.id);
-          const existingByName = Array.from(collectionsMap.values()).find(
-            c => c.name.toLowerCase() === mock.name.toLowerCase()
-          );
-          
-          if (!existingById && !existingByName) {
-            collectionsMap.set(mock.id, mock);
-          } else if (existingById && !existingById.icon) {
-            // Update icon if missing in DB
-            existingById.icon = mock.icon;
-          }
-        });
-        
-        const getOrderIndex = (name: string) => {
-          const n = name.toLowerCase();
-          if (n.includes('hinário')) return 0;
-          if (n.includes('jovens') || n.includes('ja')) return 1;
-          if (n.includes('coletânea')) return 2;
-          if (n.includes('doxologia')) return 3;
-          if (n.includes('infantil')) return 4;
-          return 99;
-        };
-
-        const sortedCollections = Array.from(collectionsMap.values()).sort((a, b) => {
-          const indexA = getOrderIndex(a.name);
-          const indexB = getOrderIndex(b.name);
-          if (indexA === indexB) return a.name.localeCompare(b.name);
-          return indexA - indexB;
-        });
-
-        setCollections(sortedCollections);
-
-        const { data: sngs, error: sngsError } = await supabase
-          .from('songs')
-          .select('id, collection_id, title, lyrics, audio_url, cover_url, album_name, year, number');
-        
-        if (sngsError) throw sngsError;
-        if (sngs && sngs.length > 0) {
-          // Ensure unique songs by ID
-          const songsMap = new Map<string, Song>();
-          sngs.forEach(song => {
-            songsMap.set(song.id, song);
-          });
-          setSongs(Array.from(songsMap.values()));
-        }
-
-      } catch (error) {
-        console.error('Erro ao buscar dados:', error);
-      } finally {
-        setIsLoading(false);
-      }
+  const fetchData = useCallback(async () => {
+    const supabase = getSupabase();
+    
+    if (!supabase) {
+      setConfigError(true);
+      setIsLoading(false);
+      return;
     }
 
+    try {
+      setIsLoading(true);
+      
+      const { data: cols, error: colsError } = await supabase
+        .from('collections')
+        .select('*');
+      
+      if (colsError) throw colsError;
+      
+      // Create a map of existing collections by ID to ensure uniqueness
+      const collectionsMap = new Map<string, Collection>();
+      
+      // 1. Add DB collections first (they are the source of truth)
+      if (cols && cols.length > 0) {
+        cols.forEach(col => {
+          collectionsMap.set(col.id, col);
+        });
+      }
+      
+      // 2. Add Mocks only if they don't exist by ID or Name
+      MOCK_COLLECTIONS.forEach(mock => {
+        const existingById = collectionsMap.get(mock.id);
+        const existingByName = Array.from(collectionsMap.values()).find(
+          c => c.name.toLowerCase() === mock.name.toLowerCase()
+        );
+        
+        if (!existingById && !existingByName) {
+          collectionsMap.set(mock.id, mock);
+        } else if (existingById && !existingById.icon) {
+          // Update icon if missing in DB
+          existingById.icon = mock.icon;
+        }
+      });
+      
+      const getOrderIndex = (name: string) => {
+        const n = name.toLowerCase();
+        if (n.includes('hinário')) return 0;
+        if (n.includes('jovens') || n.includes('ja')) return 1;
+        if (n.includes('coletânea')) return 2;
+        if (n.includes('doxologia')) return 3;
+        if (n.includes('infantil')) return 4;
+        return 99;
+      };
+
+      const sortedCollections = Array.from(collectionsMap.values()).sort((a, b) => {
+        const indexA = getOrderIndex(a.name);
+        const indexB = getOrderIndex(b.name);
+        if (indexA === indexB) return a.name.localeCompare(b.name);
+        return indexA - indexB;
+      });
+
+      setCollections(sortedCollections);
+
+      const { data: sngs, error: sngsError } = await supabase
+        .from('songs')
+        .select('id, collection_id, title, lyrics, audio_url, cover_url, album_name, year, number');
+      
+      if (sngsError) throw sngsError;
+      if (sngs && sngs.length > 0) {
+        // Ensure unique songs by ID
+        const songsMap = new Map<string, Song>();
+        sngs.forEach(song => {
+          songsMap.set(song.id, song);
+        });
+        const uniqueSongs = Array.from(songsMap.values());
+        setSongs(uniqueSongs);
+        
+        // Update selectedSong if it's currently being viewed
+        if (selectedSong) {
+          const updated = uniqueSongs.find(s => s.id === selectedSong.id);
+          if (updated) setSelectedSong(updated);
+        }
+      }
+
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedSong]);
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -965,6 +987,7 @@ export default function App() {
             <AdminView 
               key="admin-view"
               collections={collections} 
+              onSongUpdated={fetchData}
             />
           )}
         </AnimatePresence>
