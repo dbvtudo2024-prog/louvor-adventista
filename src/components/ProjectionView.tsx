@@ -14,11 +14,7 @@ import {
   Save,
   Loader2,
   Volume2,
-  VolumeX,
-  Tv,
-  Link as LinkIcon,
-  Copy,
-  Check
+  VolumeX
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
@@ -30,15 +26,12 @@ interface ProjectionViewProps {
   onTogglePlay: () => void;
   onUpdateSong?: (updatedSong: Partial<Song>) => Promise<void>;
   audioElement?: HTMLAudioElement;
-  remoteRoomId?: string | null;
 }
 
-export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdateSong, audioElement, remoteRoomId }: ProjectionViewProps) {
+export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdateSong, audioElement }: ProjectionViewProps) {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const [showRemoteInfo, setShowRemoteInfo] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
   const [isAutoAdvance, setIsAutoAdvance] = useState(true);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
@@ -296,14 +289,6 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     }
   };
 
-  const copyRemoteUrl = () => {
-    if (!remoteRoomId) return;
-    const url = `${window.location.origin}${window.location.pathname}?tv=${remoteRoomId}`;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col md:flex-row overflow-hidden">
       {/* Projection Screen (The "Big" Screen) */}
@@ -332,15 +317,6 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
 
         {/* Controls Overlay (Always visible on mobile, hover on desktop) */}
         <div className="absolute bottom-4 right-4 flex gap-2 z-30 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          {remoteRoomId && (
-            <button 
-              onClick={() => setShowRemoteInfo(true)}
-              className="p-3 bg-[#F27D26]/20 hover:bg-[#F27D26]/40 active:bg-[#F27D26]/60 rounded-full text-[#F27D26] transition-all backdrop-blur-sm border border-[#F27D26]/30"
-              title="Projetar na Smart TV"
-            >
-              <Tv className="w-5 h-5 md:w-6 md:h-6" />
-            </button>
-          )}
           <button 
             onClick={openExternalWindow}
             className="p-3 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
@@ -535,70 +511,6 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
           </div>
         </div>
       </div>
-
-      {/* Remote Projection Info Modal */}
-      <AnimatePresence>
-        {showRemoteInfo && remoteRoomId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-[#F27D26]/10 flex items-center justify-center">
-                  <Tv className="w-6 h-6 text-[#F27D26]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-serif font-bold text-brand-primary">Projetar na Smart TV</h3>
-                  <p className="text-xs text-slate-500">Siga os passos abaixo na sua TV</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">1. Abra este link na TV</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono truncate">
-                      {window.location.origin}/?tv={remoteRoomId}
-                    </div>
-                    <button 
-                      onClick={copyRemoteUrl}
-                      className="p-2 bg-white rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                    >
-                      {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">2. Digite o ID da Sala</p>
-                  <div className="text-3xl font-mono font-bold text-brand-primary tracking-widest text-center py-2">
-                    {remoteRoomId}
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-400 italic text-center leading-relaxed">
-                  Dica: Você pode enviar este link para o WhatsApp e abrir no navegador da TV ou digitar manualmente.
-                </p>
-
-                <button 
-                  onClick={() => setShowRemoteInfo(false)}
-                  className="w-full py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
-                >
-                  Entendi
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Confirmation Modal */}
       <AnimatePresence>
