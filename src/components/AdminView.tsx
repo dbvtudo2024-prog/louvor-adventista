@@ -109,6 +109,24 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     }
   }, [adminMode]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showTimingEditor) {
+          setShowTimingEditor(false);
+          return;
+        }
+        if (editingSongId) {
+          setEditingSongId(null);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showTimingEditor, editingSongId]);
+
   const startRecording = () => {
     if (!audioUrl && !audioFile) {
       alert('Adicione um áudio primeiro para gravar os tempos.');

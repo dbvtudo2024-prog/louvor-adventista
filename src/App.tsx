@@ -110,6 +110,32 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isSlideMode || isProjecting) {
+          audio.pause();
+          audio.currentTime = 0;
+          setIsPlaying(false);
+          setIsSlideMode(false);
+          setIsProjecting(false);
+          return;
+        }
+        if (isMenuOpen) {
+          setIsMenuOpen(false);
+          return;
+        }
+        if (selectedAlbum) {
+          setSelectedAlbum(null);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSlideMode, isProjecting, isMenuOpen, selectedAlbum, audio]);
+
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     try {
