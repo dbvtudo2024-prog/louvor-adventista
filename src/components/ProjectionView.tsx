@@ -12,7 +12,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Save,
-  Loader2
+  Loader2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
@@ -36,6 +38,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
   const [isSavingTiming, setIsSavingTiming] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [volume, setVolume] = useState(audioElement?.volume ?? 1);
   const wakeLockRef = useRef<any>(null);
   const externalWindowRef = useRef<Window | null>(null);
   
@@ -208,6 +211,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     // Initial values
     setAudioCurrentTime(audioElement.currentTime);
     setAudioDuration(audioElement.duration || 0);
+    setVolume(audioElement.volume);
 
     return () => {
       audioElement.removeEventListener('timeupdate', handleTimeUpdate);
@@ -220,6 +224,13 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    if (audioElement) {
+      audioElement.volume = newVolume;
+      setVolume(newVolume);
+    }
   };
 
   const handleSaveTiming = async () => {
@@ -392,6 +403,28 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
           )}
 
           <div className="flex flex-col gap-2 md:gap-4">
+            {/* Volume Control */}
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => handleVolumeChange(volume === 0 ? 1 : 0)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+              <input 
+                type="range" 
+                min="0" 
+                max="1" 
+                step="0.01"
+                value={volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+              />
+              <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
+
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
