@@ -43,6 +43,13 @@ const ICON_MAP: Record<string, any> = {
   scroll: Scroll,
 };
 
+const formatTime = (seconds: number) => {
+  if (isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
 export default function App() {
   const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin'>('home');
   const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
@@ -72,6 +79,8 @@ export default function App() {
   const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(null);
   const [isSlideMode, setIsSlideMode] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -186,11 +195,27 @@ export default function App() {
     return () => authListener?.subscription?.unsubscribe();
   }, []);
 
-  // Audio effects
+  // Audio effects and events
   useEffect(() => {
     audio.volume = volume;
     audio.playbackRate = playbackRate;
   }, [volume, playbackRate, audio]);
+
+  useEffect(() => {
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setDuration(audio.duration);
+    const handleEnded = () => setIsPlaying(false);
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [audio]);
 
   // Fetch data from Supabase
   const fetchData = useCallback(async () => {
@@ -835,7 +860,7 @@ export default function App() {
                           {selectedSong.title}
                         </span>
                         <span className="text-[10px] font-mono text-slate-400">
-                          00:00 / 04:17
+                          {formatTime(currentTime)} / {formatTime(duration)}
                         </span>
                       </div>
                       
@@ -873,9 +898,24 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Progress Bar Placeholder */}
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full w-1/3 bg-slate-300 rounded-full" />
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                      <div 
+                        className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden cursor-pointer relative"
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const percentage = x / rect.width;
+                          audio.currentTime = percentage * duration;
+                        }}
+                      >
+                        <motion.div 
+                          className="h-full bg-sky-400 rounded-full"
+                          initial={false}
+                          animate={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                          transition={{ type: "spring", bounce: 0, duration: 0.2 }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -946,6 +986,7 @@ export default function App() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
                         className={cn(
                           "text-center leading-relaxed text-brand-primary font-serif italic transition-all min-h-[150px] flex items-center justify-center",
                           fontSize === 'sm' ? "text-2xl" : fontSize === 'md' ? "text-4xl" : "text-5xl"

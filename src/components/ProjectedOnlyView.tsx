@@ -9,6 +9,7 @@ interface ProjectedOnlyViewProps {
 export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps) {
   const [song, setSong] = useState(initialSong);
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
+  const wakeLockRef = useRef<any>(null);
   
   const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -34,6 +35,36 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
     return [song.title || 'Sem Título', ...parsed];
   }, [song?.lyrics, song?.title]);
+
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error('Wake Lock error:', err);
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof BroadcastChannel !== 'undefined') {
@@ -73,7 +104,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 1.05 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
           className={`text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500 ${
             currentPhraseIndex === 0 ? "text-[#F27D26] not-italic font-bold" : "text-white"
           }`}

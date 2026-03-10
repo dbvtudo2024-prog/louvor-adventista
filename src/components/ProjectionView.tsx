@@ -34,6 +34,9 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
   const [isAutoAdvance, setIsAutoAdvance] = useState(true);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
   const [isSavingTiming, setIsSavingTiming] = useState(false);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const wakeLockRef = useRef<any>(null);
   
   const channelRef = useRef<BroadcastChannel | null>(null);
   const currentIndexRef = useRef(currentPhraseIndex);
@@ -53,6 +56,36 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
         }
       }
     }
+  }, []);
+
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error('Wake Lock error:', err);
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -157,6 +190,32 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     return () => clearTimeout(timeout);
   }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds, phrasesWithTimings]);
 
+  useEffect(() => {
+    if (!audioElement) return;
+
+    const handleTimeUpdate = () => setAudioCurrentTime(audioElement.currentTime);
+    const handleLoadedMetadata = () => setAudioDuration(audioElement.duration);
+
+    audioElement.addEventListener('timeupdate', handleTimeUpdate);
+    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+    // Initial values
+    setAudioCurrentTime(audioElement.currentTime);
+    setAudioDuration(audioElement.duration || 0);
+
+    return () => {
+      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
+      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    };
+  }, [audioElement]);
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleSaveTiming = async () => {
     if (!onUpdateSong) return;
     setIsSavingTiming(true);
@@ -225,7 +284,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className={cn(
               "text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500 z-10",
               currentPhraseIndex === 0 
@@ -300,6 +359,31 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
 
         {/* Playback Controls */}
         <div className="p-4 md:p-6 bg-slate-900 border-t border-white/10 space-y-4 md:space-y-6">
+          {audioElement && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                <span>{formatTime(audioCurrentTime)}</span>
+                <span>{formatTime(audioDuration)}</span>
+              </div>
+              <div 
+                className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const percentage = x / rect.width;
+                  audioElement.currentTime = percentage * audioDuration;
+                }}
+              >
+                <motion.div 
+                  className="h-full bg-sky-400 rounded-full"
+                  initial={false}
+                  animate={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
+                  transition={{ type: "spring", bounce: 0, duration: 0.2 }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 md:gap-4">
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
