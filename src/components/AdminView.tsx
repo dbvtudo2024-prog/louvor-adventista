@@ -226,7 +226,6 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       if (supabase) {
         try {
           await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
-          if (onSongUpdated) onSongUpdated();
           
           // Notify external windows
           if (channelRef.current) {
