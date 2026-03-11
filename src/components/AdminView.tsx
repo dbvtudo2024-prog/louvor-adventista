@@ -153,9 +153,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
   const markTiming = () => {
     const currentTime = recordingAudio.currentTime;
-    const duration = Math.round(currentTime - lastMarkTime);
+    const duration = parseFloat((currentTime - lastMarkTime).toFixed(1));
     
-    if (duration <= 0) return;
+    if (duration < 0.1) return;
 
     const newTimings = [...recordedTimings, duration];
     setRecordedTimings(newTimings);
@@ -164,7 +164,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     // Update lyrics in real-time so the list reflects the recording
     applyRecordedTimings(newTimings);
 
-    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '');
     const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
     const totalSlides = lines.length + 1; // Title + Lyrics
     
@@ -194,19 +194,19 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
   const applyRecordedTimings = async (timings: number[]) => {
     // timings array contains durations for title, then line 1, line 2, etc.
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:\.\d+)?)\]/);
     const existingTitleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
     
     const titleTiming = timings[0] !== undefined ? timings[0] : existingTitleTiming;
     const lyricsTimings = timings.slice(1);
     
     // Remove existing title timing tag if present
-    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '');
     const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
     
     let lineIdx = 0;
     const newLines = lines.map(l => {
-      const m = l.match(/^\[(\d+)\]\s*(.*)/);
+      const m = l.match(/^\[(\d+(?:\.\d+)?)\]\s*(.*)/);
       const existingLineTiming = m ? m[1] : '5';
       const content = m ? m[2] : l;
       
@@ -801,15 +801,15 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                           {(() => {
-                            const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+                            const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:\.\d+)?)\]/);
                             const titleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
-                            const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                            const cleanLyrics = lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '');
                             const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
                             
                             const slides = [
                               { text: title || 'Título', timing: titleTiming, isTitle: true, originalIndex: -1 },
                               ...lines.map((l, idx) => {
-                                const match = l.match(/^\[(\d+)\]\s*(.*)/);
+                                const match = l.match(/^\[(\d+(?:\.\d+)?)\]\s*(.*)/);
                                 return { 
                                   text: match ? match[2] : l, 
                                   timing: match ? match[1] : '5',
@@ -854,17 +854,17 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                         let updatedLyrics = '';
                                         
                                         if (slide.isTitle) {
-                                          const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                          const cleanLyrics = lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '');
                                           updatedLyrics = `[T:${newTiming}]\n${cleanLyrics}`;
                                         } else {
-                                          const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
+                                          const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:\.\d+)?)\]/);
                                           const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1] : '5';
-                                          const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+                                          const cleanLyrics = lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '');
                                           const lines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
                                           
                                           const newLines = lines.map((l, lIdx) => {
                                             if (lIdx === slide.originalIndex) {
-                                              const m = l.match(/^\[(\d+)\]\s*(.*)/);
+                                              const m = l.match(/^\[(\d+(?:\.\d+)?)\]\s*(.*)/);
                                               const content = m ? m[2] : l;
                                               return `[${newTiming}] ${content}`;
                                             }
