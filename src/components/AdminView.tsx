@@ -80,6 +80,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const activeSlideRef = useRef<HTMLDivElement>(null);
   const slidesContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   useEffect(() => {
     if (isRecording && activeSlideRef.current) {
@@ -95,24 +96,27 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     const titleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
     const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
     const rawLines = cleanLyrics.split('\n');
-    const lines = rawLines.filter(l => l.trim().length > 0 || l.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
     const parsedSlides = [
-      { text: title || 'Título', timing: titleTiming, isTitle: true, originalIndex: -1 },
-      ...lines.map((l, idx) => {
+      { text: title || 'Título', timing: titleTiming, isTitle: true, rawIndex: -1 }
+    ];
+
+    rawLines.forEach((l, idx) => {
+      const isTimingTagOnly = l.match(/^\[(\d+(?:[.,]\d+)?)\]$/);
+      if (l.trim().length > 0 || isTimingTagOnly) {
         const match = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
-        return { 
+        parsedSlides.push({ 
           text: match ? match[2] : l, 
           timing: match ? match[1].replace(',', '.') : '5',
           isTitle: false,
-          originalIndex: idx
-        };
-      })
-    ];
+          rawIndex: idx
+        });
+      }
+    });
 
     const lastSlide = parsedSlides[parsedSlides.length - 1];
     if (lastSlide && lastSlide.text !== '') {
-      parsedSlides.push({ text: '', timing: '0', isTitle: false, originalIndex: lines.length });
+      parsedSlides.push({ text: '', timing: '5', isTitle: false, rawIndex: rawLines.length });
     }
     return parsedSlides;
   }, [lyrics, title]);
@@ -262,9 +266,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     });
     
     // Handle the final empty slide timing if it exists in recorded timings
-    const finalEmptyTiming = lyricsTimings[lines.length] !== undefined ? lyricsTimings[lines.length] : (hasFinalEmptyTiming ? rawLines[rawLines.length - 1].match(/\[(\d+(?:[.,]\d+)?)\]/)?.[1].replace(',', '.') : '0');
+    const finalEmptyTiming = lyricsTimings[lines.length] !== undefined ? lyricsTimings[lines.length] : (hasFinalEmptyTiming ? rawLines[rawLines.length - 1].match(/\[(\d+(?:[.,]\d+)?)\]/)?.[1].replace(',', '.') : '5');
     
-    const updatedLyrics = `[T:${titleTiming}]\n${newLines.join('\n')}${finalEmptyTiming && finalEmptyTiming !== '0' ? `\n[${finalEmptyTiming}]` : ''}`;
+    const updatedLyrics = `[T:${titleTiming}]\n${newLines.join('\n')}\n[${finalEmptyTiming}]`;
     setLyrics(updatedLyrics);
 
     // If editing an existing song, save to DB
@@ -914,7 +918,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                       max="60"
                                       step="0.1"
                                       value={slide.timing}
-                                      onChange={async (e) => {
+                                      onChange={(e) => {
                                         const newTiming = e.target.value.replace(',', '.') || '5';
                                         let updatedLyrics = '';
                                         
@@ -925,7 +929,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                           const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
                                           const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
                                           const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                                          const rawLines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
+                                          const rawLines = cleanLyrics.split('\n');
                                           const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
                                           const lines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
                                           
@@ -938,36 +942,42 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                             return l;
                                           });
 
-                                          let finalEmptyTiming = hasFinalEmptyTiming ? rawLines[rawLines.length - 1].match(/\[(\d+(?:[.,]\d+)?)\]/)?.[1].replace(',', '.') : '0';
+                                          let finalEmptyTiming = hasFinalEmptyTiming ? rawLines[rawLines.length - 1].match(/\[(\d+(?:[.,]\d+)?)\]/)?.[1].replace(',', '.') : '5';
                                           
                                           if (slide.originalIndex === lines.length) {
                                             finalEmptyTiming = newTiming;
                                           }
 
-                                          updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}${finalEmptyTiming && finalEmptyTiming !== '0' ? `\n[${finalEmptyTiming}]` : ''}`;
+                                          updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}\n[${finalEmptyTiming}]`;
                                         }
                                         
                                         setLyrics(updatedLyrics);
 
-                                        // If editing an existing song, save to DB in real-time
+                                        // Debounced save to DB
                                         if (editingSongId) {
-                                          const supabase = getSupabase();
-                                          if (supabase) {
-                                            try {
-                                              await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
-                                              if (onSongUpdated) onSongUpdated();
-
-                                              // Notify external windows
-                                              if (channelRef.current) {
-                                                channelRef.current.postMessage({ 
-                                                  type: 'SONG_UPDATED', 
-                                                  song: { id: editingSongId, lyrics: updatedLyrics, title } 
-                                                });
+                                          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                                          setIsAutoSaving(true);
+                                          
+                                          saveTimeoutRef.current = setTimeout(async () => {
+                                            const supabase = getSupabase();
+                                            if (supabase) {
+                                              try {
+                                                await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+                                                if (onSongUpdated) onSongUpdated();
+                                                
+                                                if (channelRef.current) {
+                                                  channelRef.current.postMessage({ 
+                                                    type: 'SONG_UPDATED', 
+                                                    song: { id: editingSongId, lyrics: updatedLyrics, title } 
+                                                  });
+                                                }
+                                              } catch (e) {
+                                                console.error('Erro ao salvar tempo:', e);
+                                              } finally {
+                                                setIsAutoSaving(false);
                                               }
-                                            } catch (e) {
-                                              console.error('Erro ao salvar tempo em tempo real:', e);
                                             }
-                                          }
+                                          }, 1000);
                                         }
                                       }}
                                       className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
