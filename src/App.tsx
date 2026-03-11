@@ -198,21 +198,21 @@ export default function App() {
     let lyrics = selectedSong.lyrics || '';
     
     // Check for custom title timing [T:seconds]
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:\.\d+)?)\]/);
-    const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1]) : 5;
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1].replace(',', '.')) : 5;
     
     // Remove the title timing tag if it exists
-    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:\.\d+)?\]\n?/, '') : lyrics;
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '') : lyrics;
     
     const lines = lyricsToParse
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
     const parsed = lines.map(line => {
-      const match = line.match(/^\[(\d+(?:\.\d+)?)\]\s*(.*)/);
+      const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       return {
-        timing: match ? parseFloat(match[1]) : 5,
+        timing: match ? parseFloat(match[1].replace(',', '.')) : 5,
         text: match ? match[2] : line
       };
     });

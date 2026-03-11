@@ -18,15 +18,15 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     let lyrics = song.lyrics || '';
     
     // Remove title timing tag if present
-    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
     
     const lines = cleanLyrics
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
     const parsed = lines.map(line => {
-      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       if (match) {
         return match[2];
       }

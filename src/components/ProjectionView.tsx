@@ -133,21 +133,21 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
     let lyrics = song.lyrics || '';
     
     // Check for custom title timing [T:seconds]
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+)\]/);
-    const titleTiming = titleTimingMatch ? parseInt(titleTimingMatch[1]) : autoAdvanceSeconds;
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1].replace(',', '.')) : autoAdvanceSeconds;
     
     // Remove the title timing tag if it exists for parsing the rest of the lines
-    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+\]\n?/, '') : lyrics;
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '') : lyrics;
     
     const lines = lyricsToParse
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
     const parsed = lines.map(line => {
-      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       if (match) {
-        return { timing: parseInt(match[1]), text: match[2] };
+        return { timing: parseFloat(match[1].replace(',', '.')), text: match[2] };
       }
       return { timing: autoAdvanceSeconds, text: line };
     });
