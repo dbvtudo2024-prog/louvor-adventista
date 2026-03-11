@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Save, 
@@ -75,7 +75,47 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const [recordedTimings, setRecordedTimings] = useState<number[]>([]);
   const [recordingAudio] = useState(new Audio());
   const [lastMarkTime, setLastMarkTime] = useState(0);
+  const [isRecordingFinished, setIsRecordingFinished] = useState(false);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const activeSlideRef = useRef<HTMLDivElement>(null);
+  const slidesContainerRef = useRef<HTMLDivElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isRecording && activeSlideRef.current) {
+      activeSlideRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [recordingCurrentLine, isRecording]);
+
+  const slides = useMemo(() => {
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+    const rawLines = cleanLyrics.split('\n');
+    const lines = rawLines.filter(l => l.trim().length > 0 || l.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
+    
+    const parsedSlides = [
+      { text: title || 'Título', timing: titleTiming, isTitle: true, originalIndex: -1 },
+      ...lines.map((l, idx) => {
+        const match = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
+        return { 
+          text: match ? match[2] : l, 
+          timing: match ? match[1].replace(',', '.') : '5',
+          isTitle: false,
+          originalIndex: idx
+        };
+      })
+    ];
+
+    const lastSlide = parsedSlides[parsedSlides.length - 1];
+    if (lastSlide && lastSlide.text !== '') {
+      parsedSlides.push({ text: '', timing: '0', isTitle: false, originalIndex: lines.length });
+    }
+    return parsedSlides;
+  }, [lyrics, title]);
 
   useEffect(() => {
     if (editingSongId && typeof BroadcastChannel !== 'undefined') {
@@ -141,6 +181,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     });
     
     setIsRecording(true);
+    setIsRecordingFinished(false);
     setRecordingCurrentLine(0);
     setRecordedTimings([]);
     setLastMarkTime(0);
@@ -149,6 +190,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const stopRecording = () => {
     recordingAudio.pause();
     setIsRecording(false);
+    setIsRecordingFinished(true);
+    // Force save on stop
+    applyRecordedTimings(recordedTimings, true);
   };
 
   const markTiming = () => {
@@ -164,14 +208,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     // Update lyrics in real-time so the list reflects the recording
     applyRecordedTimings(newTimings);
 
-    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-    const rawLines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
-    const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
-    const lyricsLines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
+    const totalSlidesCount = slides.length;
     
-    const totalSlides = lyricsLines.length + 2; // Title + Lyrics + Final Empty Slide
-    
-    if (recordingCurrentLine < totalSlides - 1) {
+    if (recordingCurrentLine < totalSlidesCount - 1) {
       setRecordingCurrentLine(prev => prev + 1);
     } else {
       // Finished recording all lines
@@ -195,7 +234,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     applyRecordedTimings(newTimings);
   };
 
-  const applyRecordedTimings = async (timings: number[]) => {
+  const applyRecordedTimings = (timings: number[], forceSave = false) => {
     // timings array contains durations for title, then line 1, line 2, etc.
     const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
     const existingTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
@@ -228,23 +267,33 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     const updatedLyrics = `[T:${titleTiming}]\n${newLines.join('\n')}${finalEmptyTiming && finalEmptyTiming !== '0' ? `\n[${finalEmptyTiming}]` : ''}`;
     setLyrics(updatedLyrics);
 
-    // If editing an existing song, save to DB in real-time
+    // If editing an existing song, save to DB
     if (editingSongId) {
-      const supabase = getSupabase();
-      if (supabase) {
-        try {
-          await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
-          
-          // Notify external windows
-          if (channelRef.current) {
-            channelRef.current.postMessage({ 
-              type: 'SONG_UPDATED', 
-              song: { id: editingSongId, lyrics: updatedLyrics, title } 
-            });
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      const saveToDb = async () => {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+            
+            // Notify external windows
+            if (channelRef.current) {
+              channelRef.current.postMessage({ 
+                type: 'SONG_UPDATED', 
+                song: { id: editingSongId, lyrics: updatedLyrics, title } 
+              });
+            }
+          } catch (e) {
+            console.error('Erro ao salvar tempos em tempo real:', e);
           }
-        } catch (e) {
-          console.error('Erro ao salvar tempos em tempo real:', e);
         }
+      };
+
+      if (forceSave) {
+        saveToDb();
+      } else {
+        saveTimeoutRef.current = setTimeout(saveToDb, 1500); // 1.5s debounce
       }
     }
   };
@@ -767,17 +816,30 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                           </div>
                         </div>
 
+                        {isRecordingFinished && !isRecording && (
+                          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 text-center space-y-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-emerald-800">Gravação Concluída!</p>
+                              <p className="text-[10px] text-emerald-600">Os tempos foram salvos automaticamente.</p>
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => setIsRecordingFinished(false)}
+                              className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest hover:underline"
+                            >
+                              Fechar Aviso
+                            </button>
+                          </div>
+                        )}
+
                         {isRecording && (
                           <div className="p-4 bg-brand-primary/5 rounded-xl border border-brand-primary/10 space-y-4 animate-pulse-subtle">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">
-                                Gravando Slide {recordingCurrentLine + 1} de {(() => {
-                                  const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                                  const rawLines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
-                                  const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
-                                  const lyricsLines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
-                                  return lyricsLines.length + 2;
-                                })()}
+                                Gravando Slide {recordingCurrentLine + 1} de {slides.length}
                               </span>
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -785,21 +847,24 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                               </div>
                             </div>
                             
-                            <div className="bg-white p-4 rounded-lg border border-brand-primary/20 shadow-sm min-h-[60px] flex items-center justify-center">
-                              <p className="text-sm font-serif italic text-brand-primary text-center">
-                                {(() => {
-                                  if (recordingCurrentLine === 0) return title || 'Título';
-                                  const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                                  const rawLines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
-                                  const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
-                                  const lines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
-                                  
-                                  if (recordingCurrentLine > lines.length) return '(Slide Vazio Final)';
-                                  return lines[recordingCurrentLine - 1]?.replace(/\[\d+(?:[.,]\d+)?\]\s*/g, '') || '(Slide Vazio)';
-                                })()}
-                              </p>
+                            <div className="bg-white p-4 rounded-lg border border-brand-primary/20 shadow-sm min-h-[60px] flex items-center justify-center relative overflow-hidden">
+                              <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary/20" />
+                              <div className="text-center space-y-1">
+                                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Frase Atual:</p>
+                                <p className="text-sm font-serif italic text-brand-primary">
+                                  {slides[recordingCurrentLine]?.text || (recordingCurrentLine === slides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}
+                                </p>
+                                {recordingCurrentLine < slides.length - 1 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-50">
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Próxima:</p>
+                                    <p className="text-[11px] text-slate-500 italic">
+                                      {slides[recordingCurrentLine + 1]?.text || '(Slide Vazio Final)'}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-
+                            
                             <button
                               type="button"
                               onClick={markTiming}
@@ -813,43 +878,21 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                           </div>
                         )}
 
-                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                          {(() => {
-                            const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
-                            const titleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
-                            const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                            const rawLines = cleanLyrics.split('\n');
-                            const lines = rawLines.filter(l => l.trim().length > 0 || l.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
-                            
-                            const slides = [
-                              { text: title || 'Título', timing: titleTiming, isTitle: true, originalIndex: -1 },
-                              ...lines.map((l, idx) => {
-                                const match = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
-                                return { 
-                                  text: match ? match[2] : l, 
-                                  timing: match ? match[1].replace(',', '.') : '5',
-                                  isTitle: false,
-                                  originalIndex: idx
-                                };
-                              })
-                            ];
-
-                            // Add the final empty slide if it's not already there
-                            const lastSlide = slides[slides.length - 1];
-                            if (lastSlide && lastSlide.text !== '') {
-                              slides.push({ text: '', timing: '0', isTitle: false, originalIndex: lines.length });
-                            }
-
-                            return slides.map((slide, idx) => {
+                        <div 
+                          ref={slidesContainerRef}
+                          className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar scroll-smooth"
+                        >
+                          {slides.map((slide, idx) => {
                               const isCurrent = isRecording && idx === recordingCurrentLine;
                               const isRecorded = isRecording && idx < recordingCurrentLine;
 
                               return (
                                 <div 
                                   key={idx} 
+                                  ref={isCurrent ? activeSlideRef : null}
                                   className={cn(
                                     "flex items-center gap-3 p-3 rounded-xl border transition-all",
-                                    isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md" : 
+                                    isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md scale-[1.02]" : 
                                     isRecorded ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"
                                   )}
                                 >
@@ -861,16 +904,16 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                       <p className={cn(
                                         "text-xs truncate italic",
                                         isCurrent ? "text-brand-primary font-bold" : "text-slate-500"
-                                      )}>{slide.text || '(Slide Vazio)'}</p>
+                                      )}>{slide.text || (idx === slides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}</p>
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <input
                                       type="number"
-                                      min="1"
+                                      min="0"
                                       max="60"
-                                      value={slide.timing}
                                       step="0.1"
+                                      value={slide.timing}
                                       onChange={async (e) => {
                                         const newTiming = e.target.value.replace(',', '.') || '5';
                                         let updatedLyrics = '';
@@ -932,9 +975,8 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
                                   </div>
                                 </div>
-                              );
-                            });
-                          })()}
+                            );
+                          })}
                         </div>
                       </div>
                     </motion.div>
