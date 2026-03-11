@@ -81,6 +81,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const slidesContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const lyricsRef = useRef(lyrics);
+
+  useEffect(() => {
+    lyricsRef.current = lyrics;
+  }, [lyrics]);
 
   useEffect(() => {
     if (isRecording && activeSlideRef.current) {
@@ -191,12 +196,17 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setLastMarkTime(0);
   };
 
-  const stopRecording = () => {
+  const stopRecording = (finalTimings?: number[] | React.MouseEvent) => {
     recordingAudio.pause();
     setIsRecording(false);
     setIsRecordingFinished(true);
-    // Force save on stop
-    applyRecordedTimings(recordedTimings, true);
+    
+    // If it's a mouse event, it was triggered by the button, so use state
+    // If it's an array, it was passed from markTiming
+    const timingsToUse = Array.isArray(finalTimings) ? finalTimings : recordedTimings;
+    
+    // Force save on stop using provided timings or state
+    applyRecordedTimings(timingsToUse, true);
   };
 
   const markTiming = () => {
@@ -218,7 +228,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       setRecordingCurrentLine(prev => prev + 1);
     } else {
       // Finished recording all lines
-      stopRecording();
+      stopRecording(newTimings);
     }
   };
 
@@ -239,15 +249,16 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   };
 
   const applyRecordedTimings = (timings: number[], forceSave = false) => {
+    const currentLyrics = lyricsRef.current;
     // timings array contains durations for title, then line 1, line 2, etc.
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTimingMatch = currentLyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
     const existingTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
     
     const titleTiming = timings[0] !== undefined ? timings[0] : existingTitleTiming;
     const lyricsTimings = timings.slice(1);
     
     // Remove existing title timing tag if present
-    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+    const cleanLyrics = currentLyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
     const rawLines = cleanLyrics.split('\n').filter(l => l.trim().length > 0);
     const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
     const lines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
@@ -274,6 +285,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     // If editing an existing song, save to DB
     if (editingSongId) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      setIsAutoSaving(true);
       
       const saveToDb = async () => {
         const supabase = getSupabase();
@@ -290,6 +302,8 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
             }
           } catch (e) {
             console.error('Erro ao salvar tempos em tempo real:', e);
+          } finally {
+            setIsAutoSaving(false);
           }
         }
       };
@@ -923,18 +937,16 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                         let updatedLyrics = '';
                                         
                                         if (slide.isTitle) {
-                                          const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+                                          const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
                                           updatedLyrics = `[T:${newTiming}]\n${cleanLyrics}`;
                                         } else {
-                                          const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+                                          const titleTimingMatch = lyricsRef.current.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
                                           const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
-                                          const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+                                          const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
                                           const rawLines = cleanLyrics.split('\n');
-                                          const hasFinalEmptyTiming = rawLines.length > 0 && rawLines[rawLines.length - 1].match(/^\[(\d+(?:[.,]\d+)?)\]$/);
-                                          const lines = hasFinalEmptyTiming ? rawLines.slice(0, -1) : rawLines;
                                           
-                                          const newLines = lines.map((l, lIdx) => {
-                                            if (lIdx === slide.originalIndex) {
+                                          const newLines = rawLines.map((l, lIdx) => {
+                                            if (lIdx === slide.rawIndex) {
                                               const m = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
                                               const content = m ? m[2] : l;
                                               return `[${newTiming}] ${content}`;
@@ -942,13 +954,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                             return l;
                                           });
 
-                                          let finalEmptyTiming = hasFinalEmptyTiming ? rawLines[rawLines.length - 1].match(/\[(\d+(?:[.,]\d+)?)\]/)?.[1].replace(',', '.') : '5';
-                                          
-                                          if (slide.originalIndex === lines.length) {
-                                            finalEmptyTiming = newTiming;
+                                          if (slide.rawIndex >= rawLines.length) {
+                                            updatedLyrics = `[T:${currentTitleTiming}]\n${cleanLyrics}\n[${newTiming}]`;
+                                          } else {
+                                            updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}`;
                                           }
-
-                                          updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}\n[${finalEmptyTiming}]`;
                                         }
                                         
                                         setLyrics(updatedLyrics);
