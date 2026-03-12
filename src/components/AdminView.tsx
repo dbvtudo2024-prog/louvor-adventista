@@ -994,6 +994,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button
+                                      type="button"
                                       onClick={() => {
                                         setEditingSlideTiming({ slide, index: idx });
                                         setTempTiming(slide.timing.toString());
@@ -1206,12 +1207,14 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
               <div className="grid grid-cols-2 gap-3">
                 <button
+                  type="button"
                   onClick={() => setEditingSlideTiming(null)}
                   className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
                 >
                   Cancelar
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveTiming}
                   className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
                 >

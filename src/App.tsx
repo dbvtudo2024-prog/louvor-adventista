@@ -1,3 +1,4 @@
+// Louvor Adventista - v1.0.1
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RemoteReceiverView } from './components/RemoteReceiverView';
