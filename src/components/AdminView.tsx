@@ -81,6 +81,8 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const slidesContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [editingSlideTiming, setEditingSlideTiming] = useState<{ slide: any, index: number } | null>(null);
+  const [tempTiming, setTempTiming] = useState<string>('');
   const lyricsRef = useRef(lyrics);
 
   useEffect(() => {
@@ -317,6 +319,66 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         saveToDb();
       } else {
         saveTimeoutRef.current = setTimeout(saveToDb, 1500); // 1.5s debounce
+      }
+    }
+  };
+
+  const handleSaveTiming = async () => {
+    if (!editingSlideTiming) return;
+    
+    const { slide } = editingSlideTiming;
+    const newTiming = tempTiming.replace(',', '.') || '5';
+    let updatedLyrics = '';
+    
+    if (slide.isTitle) {
+      const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+      updatedLyrics = `[T:${newTiming}]\n${cleanLyrics}`;
+    } else {
+      const titleTimingMatch = lyricsRef.current.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+      const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
+      const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
+      const rawLines = cleanLyrics.split('\n');
+      
+      const newLines = rawLines.map((l, lIdx) => {
+        if (lIdx === slide.rawIndex) {
+          const m = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
+          const content = m ? m[2] : l;
+          return `[${newTiming}] ${content}`;
+        }
+        return l;
+      });
+
+      if (slide.rawIndex >= rawLines.length) {
+        updatedLyrics = `[T:${currentTitleTiming}]\n${cleanLyrics}\n[${newTiming}]`;
+      } else {
+        updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}`;
+      }
+    }
+    
+    setLyrics(updatedLyrics);
+    setEditingSlideTiming(null);
+
+    // Save to DB
+    if (editingSongId) {
+      setIsAutoSaving(true);
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+          setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
+          if (onSongUpdated) onSongUpdated();
+          
+          if (channelRef.current) {
+            channelRef.current.postMessage({ 
+              type: 'SONG_UPDATED', 
+              song: { id: editingSongId, lyrics: updatedLyrics, title } 
+            });
+          }
+        } catch (e) {
+          console.error('Erro ao salvar tempo:', e);
+        } finally {
+          setIsAutoSaving(false);
+        }
       }
     }
   };
@@ -931,77 +993,16 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="60"
-                                      step="0.1"
-                                      value={slide.timing}
-                                      onChange={(e) => {
-                                        const newTiming = e.target.value.replace(',', '.') || '5';
-                                        let updatedLyrics = '';
-                                        
-                                        if (slide.isTitle) {
-                                          const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                                          updatedLyrics = `[T:${newTiming}]\n${cleanLyrics}`;
-                                        } else {
-                                          const titleTimingMatch = lyricsRef.current.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
-                                          const currentTitleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
-                                          const cleanLyrics = lyricsRef.current.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-                                          const rawLines = cleanLyrics.split('\n');
-                                          
-                                          const newLines = rawLines.map((l, lIdx) => {
-                                            if (lIdx === slide.rawIndex) {
-                                              const m = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
-                                              const content = m ? m[2] : l;
-                                              return `[${newTiming}] ${content}`;
-                                            }
-                                            return l;
-                                          });
-
-                                          if (slide.rawIndex >= rawLines.length) {
-                                            updatedLyrics = `[T:${currentTitleTiming}]\n${cleanLyrics}\n[${newTiming}]`;
-                                          } else {
-                                            updatedLyrics = `[T:${currentTitleTiming}]\n${newLines.join('\n')}`;
-                                          }
-                                        }
-                                        
-                                        setLyrics(updatedLyrics);
-
-                                        // Debounced save to DB
-                                        if (editingSongId) {
-                                          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                                          setIsAutoSaving(true);
-                                          
-                                          saveTimeoutRef.current = setTimeout(async () => {
-                                            const supabase = getSupabase();
-                                            if (supabase) {
-                                              try {
-                                                await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
-                                                
-                                                // Update local songs list to avoid stale data
-                                                setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
-                                                
-                                                if (onSongUpdated) onSongUpdated();
-                                                
-                                                if (channelRef.current) {
-                                                  channelRef.current.postMessage({ 
-                                                    type: 'SONG_UPDATED', 
-                                                    song: { id: editingSongId, lyrics: updatedLyrics, title } 
-                                                  });
-                                                }
-                                              } catch (e) {
-                                                console.error('Erro ao salvar tempo:', e);
-                                              } finally {
-                                                setIsAutoSaving(false);
-                                              }
-                                            }
-                                          }, 1000);
-                                        }
+                                    <button
+                                      onClick={() => {
+                                        setEditingSlideTiming({ slide, index: idx });
+                                        setTempTiming(slide.timing.toString());
                                       }}
-                                      className="w-16 p-2 bg-slate-50 rounded-lg border border-slate-100 text-center text-xs font-bold text-brand-primary outline-none focus:ring-2 focus:ring-brand-primary/10"
-                                    />
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-primary/10 rounded-lg border border-slate-100 transition-colors group/btn"
+                                    >
+                                      <Clock className="w-3.5 h-3.5 text-slate-400 group-hover/btn:text-brand-primary" />
+                                      <span className="text-xs font-bold text-brand-primary">{slide.timing}s</span>
+                                    </button>
                                   </div>
                                 </div>
                             );
@@ -1150,6 +1151,77 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
           </div>
         </div>
       )}
+      {/* Modal de Edição de Tempo */}
+      <AnimatePresence>
+        {editingSlideTiming && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-brand-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
+                  <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
+                <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
+                  "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
+                </p>
+
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="0.1"
+                      autoFocus
+                      value={tempTiming}
+                      onChange={(e) => setTempTiming(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTiming();
+                        if (e.key === 'Escape') setEditingSlideTiming(null);
+                      }}
+                      className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
+                    />
+                    <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setEditingSlideTiming(null)}
+                  className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveTiming}
+                  className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
+                >
+                  Salvar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
