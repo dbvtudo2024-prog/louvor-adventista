@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Save, 
@@ -92,13 +93,13 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   useEffect(() => {
     if (isRecording && activeSlideRef.current) {
       activeSlideRef.current.scrollIntoView({
-        behavior: 'smooth',
+        behavior: 'auto',
         block: 'center',
       });
     }
   }, [recordingCurrentLine, isRecording]);
 
-  const slides = useMemo(() => {
+  const baseSlides = useMemo(() => {
     const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
     const titleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
     const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
@@ -127,6 +128,15 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     }
     return parsedSlides;
   }, [lyrics, title]);
+
+  const slides = useMemo(() => {
+    if (recordedTimings.length === 0) return baseSlides;
+    
+    return baseSlides.map((s, i) => ({
+      ...s,
+      timing: recordedTimings[i] !== undefined ? recordedTimings[i].toString() : s.timing
+    }));
+  }, [baseSlides, recordedTimings]);
 
   useEffect(() => {
     if (editingSongId && typeof BroadcastChannel !== 'undefined') {
@@ -221,8 +231,8 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setRecordedTimings(newTimings);
     setLastMarkTime(currentTime);
     
-    // Update lyrics in real-time so the list reflects the recording
-    applyRecordedTimings(newTimings);
+    // Don't update lyrics in real-time during recording to avoid lag
+    // applyRecordedTimings(newTimings); 
 
     const totalSlidesCount = slides.length;
     
@@ -246,8 +256,8 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setLastMarkTime(previousTotalTime);
     setRecordingCurrentLine(prev => Math.max(0, prev - 1));
 
-    // Update lyrics to reflect the undo
-    applyRecordedTimings(newTimings);
+    // Don't update lyrics in real-time during recording to avoid lag
+    // applyRecordedTimings(newTimings);
   };
 
   const applyRecordedTimings = (timings: number[], forceSave = false) => {
@@ -568,12 +578,13 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   );
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-8"
-    >
+    <>
+      <motion.div
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        className="p-6 space-y-8"
+      >
       {/* Mode Toggle */}
       <div className="flex p-1 bg-slate-100 rounded-2xl">
         <button
@@ -1152,79 +1163,88 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
           </div>
         </div>
       )}
+      </motion.div>
+
       {/* Modal de Edição de Tempo */}
-      <AnimatePresence>
-        {editingSlideTiming && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
-          >
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence mode="wait">
+          {editingSlideTiming && (
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
+              key="timing-modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+              onClick={() => setEditingSlideTiming(null)}
             >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-brand-primary" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
-                  <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
-                <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
-                  "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
-                </p>
-
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min="0"
-                      max="60"
-                      step="0.1"
-                      autoFocus
-                      value={tempTiming}
-                      onChange={(e) => setTempTiming(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveTiming();
-                        if (e.key === 'Escape') setEditingSlideTiming(null);
-                      }}
-                      className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
-                    />
-                    <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
+              <motion.div
+                key="timing-modal-content"
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-brand-primary" />
                   </div>
-                  <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
+                  <div>
+                    <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
+                    <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingSlideTiming(null)}
-                  className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveTiming}
-                  className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
-                >
-                  Salvar
-                </button>
-              </div>
+                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
+                  <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
+                    "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
+                  </p>
+
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="0"
+                        max="60"
+                        step="0.1"
+                        autoFocus
+                        value={tempTiming}
+                        onChange={(e) => setTempTiming(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveTiming();
+                          if (e.key === 'Escape') setEditingSlideTiming(null);
+                        }}
+                        className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
+                      />
+                      <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingSlideTiming(null)}
+                    className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTiming}
+                    className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
 }
