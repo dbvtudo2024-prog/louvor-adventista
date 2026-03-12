@@ -293,6 +293,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
           try {
             await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
             
+            // Update local songs list to avoid stale data
+            setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
+            
+            if (onSongUpdated) onSongUpdated();
+            
             // Notify external windows
             if (channelRef.current) {
               channelRef.current.postMessage({ 
@@ -973,6 +978,10 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                                             if (supabase) {
                                               try {
                                                 await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
+                                                
+                                                // Update local songs list to avoid stale data
+                                                setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
+                                                
                                                 if (onSongUpdated) onSongUpdated();
                                                 
                                                 if (channelRef.current) {
