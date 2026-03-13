@@ -30,11 +30,14 @@ import {
   Undo2,
   PlayCircle,
   PauseCircle,
+  Sparkles,
+  Zap,
   X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getSupabase } from '../lib/supabase';
 import { Collection, Song } from '../types';
+import { generateLyricsTimings } from '../services/aiService';
 
 const ICON_MAP: Record<string, any> = {
   church: Church,
@@ -480,6 +483,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const slidesContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [isSyncingAI, setIsSyncingAI] = useState(false);
   const [editingSlideTiming, setEditingSlideTiming] = useState<{ slide: any, index: number } | null>(null);
   const [tempTiming, setTempTiming] = useState<string>('');
   const lyricsRef = useRef(lyrics);
@@ -496,6 +500,23 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       });
     }
   }, [recordingCurrentLine, isRecording]);
+
+  const handleAISync = async () => {
+    if (!title || !lyrics) {
+      alert("Por favor, preencha o título e a letra antes de sincronizar.");
+      return;
+    }
+    
+    setIsSyncingAI(true);
+    try {
+      const syncedLyrics = await generateLyricsTimings(title, lyrics);
+      setLyrics(syncedLyrics);
+    } catch (error) {
+      alert("Erro ao sincronizar com IA. Tente novamente.");
+    } finally {
+      setIsSyncingAI(false);
+    }
+  };
 
   const baseSlides = useMemo(() => {
     const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
@@ -1128,17 +1149,35 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between ml-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Letra do Hino</label>
-              <button
-                type="button"
-                onClick={() => setShowTimingEditor(!showTimingEditor)}
-                className={cn(
-                  "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
-                  showTimingEditor ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                )}
-              >
-                <Clock className="w-3 h-3" />
-                {showTimingEditor ? 'Fechar Editor de Tempos' : 'Abrir Editor de Tempos'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAISync}
+                  disabled={isSyncingAI || !lyrics || !title}
+                  className={cn(
+                    "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
+                    "bg-amber-100 text-amber-600 hover:bg-amber-200 disabled:opacity-50"
+                  )}
+                >
+                  {isSyncingAI ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  {isSyncingAI ? 'Sincronizando...' : 'Sincronizar com IA'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTimingEditor(!showTimingEditor)}
+                  className={cn(
+                    "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
+                    showTimingEditor ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  )}
+                >
+                  <Clock className="w-3 h-3" />
+                  {showTimingEditor ? 'Fechar Editor de Tempos' : 'Abrir Editor de Tempos'}
+                </button>
+              </div>
             </div>
             
             {showTimingEditor ? (
