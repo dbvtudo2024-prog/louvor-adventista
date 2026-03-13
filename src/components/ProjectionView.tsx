@@ -31,9 +31,19 @@ interface ProjectionViewProps {
   onUpdateSong?: (updatedSong: Partial<Song>) => Promise<void>;
   audioElement?: HTMLAudioElement;
   remoteRoomId?: string | null;
+  fontFamily?: 'serif' | 'montserrat' | 'opensans';
 }
 
-export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdateSong, audioElement, remoteRoomId }: ProjectionViewProps) {
+export function ProjectionView({ 
+  song, 
+  onClose, 
+  isPlaying, 
+  onTogglePlay, 
+  onUpdateSong, 
+  audioElement, 
+  remoteRoomId,
+  fontFamily = 'serif'
+}: ProjectionViewProps) {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -120,6 +130,7 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       setCurrentPhraseIndex(0);
       safePostMessage({ type: 'SYNC_INDEX', index: 0 });
       safePostMessage({ type: 'SONG_UPDATED', song });
+      safePostMessage({ type: 'SYNC_FONT', fontFamily });
 
       return () => {
         channel.close();
@@ -127,6 +138,10 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
       };
     }
   }, [song.id, safePostMessage, song]);
+
+  useEffect(() => {
+    safePostMessage({ type: 'SYNC_FONT', fontFamily });
+  }, [fontFamily, safePostMessage]);
 
   const phrasesWithTimings = useMemo(() => {
     if (!song) return [];
@@ -318,15 +333,33 @@ export function ProjectionView({ song, onClose, isPlaying, onTogglePlay, onUpdat
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className={cn(
-              "text-center font-serif italic select-none drop-shadow-2xl transition-colors duration-500 z-10",
-              currentPhraseIndex === 0 
-                ? "text-brand-secondary not-italic font-bold" 
-                : "text-white"
-            )}
-            style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
+            className="flex flex-col items-center gap-4 md:gap-8 z-10"
           >
-            {phrases[currentPhraseIndex] || ''}
+            <div
+              className={cn(
+                "text-center italic select-none drop-shadow-2xl transition-colors duration-500",
+                currentPhraseIndex === 0 
+                  ? "text-brand-secondary not-italic font-bold" 
+                  : "text-white",
+                fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+              )}
+              style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
+            >
+              {phrases[currentPhraseIndex] || ''}
+            </div>
+            
+            {/* Next Phrase Preview */}
+            {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
+              <div 
+                className={cn(
+                  "text-center italic select-none opacity-20 transition-all duration-500",
+                  fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+                )}
+                style={{ fontSize: 'clamp(1rem, 4vw, 3rem)', lineHeight: '1.2' }}
+              >
+                {phrases[currentPhraseIndex + 1]}
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
 

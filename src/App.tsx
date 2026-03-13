@@ -73,6 +73,7 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuView, setMenuView] = useState<'main' | 'settings' | 'audio' | 'auth'>('main');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>('serif');
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [email, setEmail] = useState('');
@@ -131,10 +132,11 @@ export default function App() {
         slideIndex: currentSlideIndex,
         song: selectedSong,
         isPlaying,
-        currentTime
+        currentTime,
+        fontFamily
       });
     }
-  }, [currentSlideIndex, selectedSong, isPlaying, currentTime, remoteRoomId]);
+  }, [currentSlideIndex, selectedSong, isPlaying, currentTime, remoteRoomId, fontFamily]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -180,6 +182,23 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSlideMode, isProjecting, isMenuOpen, selectedAlbum, audio]);
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedFontSize = localStorage.getItem('fontSize') as any;
+    const savedFontFamily = localStorage.getItem('fontFamily') as any;
+    if (savedFontSize) setFontSize(savedFontSize);
+    if (savedFontFamily) setFontFamily(savedFontFamily);
+  }, []);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('fontSize', fontSize);
+  }, [fontSize]);
+
+  useEffect(() => {
+    localStorage.setItem('fontFamily', fontFamily);
+  }, [fontFamily]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -1111,8 +1130,9 @@ export default function App() {
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                         className={cn(
-                          "text-center leading-relaxed text-brand-primary font-serif italic transition-all min-h-[150px] flex items-center justify-center",
-                          fontSize === 'sm' ? "text-2xl" : fontSize === 'md' ? "text-4xl" : "text-5xl"
+                          "text-center leading-relaxed text-brand-primary italic transition-all min-h-[150px] flex items-center justify-center",
+                          fontSize === 'sm' ? "text-2xl" : fontSize === 'md' ? "text-4xl" : "text-5xl",
+                          fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                         )}
                       >
                         {slides[currentSlideIndex]?.text}
@@ -1137,8 +1157,9 @@ export default function App() {
                   </div>
                 ) : (
                   <div className={cn(
-                    "whitespace-pre-line text-center leading-relaxed text-brand-primary font-serif italic transition-all",
-                    fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl"
+                    "whitespace-pre-line text-center leading-relaxed text-brand-primary italic transition-all",
+                    fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl",
+                    fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                   )}>
                     {selectedSong.lyrics.replace(/\[\d+\]\s*/g, '')}
                   </div>
@@ -1332,6 +1353,32 @@ export default function App() {
                                   )}
                                 >
                                   {size === 'sm' ? 'Pequena' : size === 'md' ? 'Média' : 'Grande'}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+
+                          <section className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estilo da Fonte</h4>
+                            <div className="grid grid-cols-1 gap-2">
+                              {(['serif', 'montserrat', 'opensans'] as const).map((font) => (
+                                <button
+                                  key={font}
+                                  onClick={() => setFontFamily(font)}
+                                  className={cn(
+                                    "w-full py-3 px-4 rounded-xl text-left transition-all border flex items-center justify-between",
+                                    fontFamily === font 
+                                      ? "bg-brand-primary/5 border-brand-primary text-brand-primary shadow-sm" 
+                                      : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
+                                  )}
+                                >
+                                  <span className={cn(
+                                    "text-base",
+                                    font === 'serif' ? "font-serif" : font === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+                                  )}>
+                                    {font === 'serif' ? 'Elegante (Padrão)' : font === 'montserrat' ? 'Moderna (Cheia)' : 'Visível (Forte)'}
+                                  </span>
+                                  {fontFamily === font && <Check className="w-4 h-4" />}
                                 </button>
                               ))}
                             </div>
@@ -1619,6 +1666,7 @@ export default function App() {
             }}
             audioElement={audio}
             remoteRoomId={remoteRoomId}
+            fontFamily={fontFamily}
           />
         )}
       </AnimatePresence>
