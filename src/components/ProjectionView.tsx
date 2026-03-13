@@ -86,7 +86,9 @@ export function ProjectionView({
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         }
       } catch (err) {
-        console.error('Wake Lock error:', err);
+        if (err instanceof Error && err.name !== 'NotAllowedError') {
+          console.error('Wake Lock error:', err);
+        }
       }
     };
 
@@ -324,7 +326,7 @@ export function ProjectionView({
       {/* Projection Screen (The "Big" Screen) */}
       <div 
         id="projection-content"
-        className="h-[50vh] min-h-[50vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
+        className="h-[40vh] min-h-[40vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -392,17 +394,17 @@ export function ProjectionView({
       </div>
 
       {/* Operator Control Panel */}
-      <div className="w-full md:w-96 bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl z-10 flex-1 min-h-0">
-        <div className="p-4 md:p-6 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full md:w-[420px] bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl z-10 flex-1 min-h-0">
+        <div className="p-3 md:p-4 border-b border-white/10 flex items-center justify-between">
           <div className="flex flex-col">
-            <h3 className="text-white font-bold truncate max-w-[200px]">{song.title}</h3>
-            <span className="text-xs text-slate-400 uppercase tracking-widest">Painel do Operador</span>
+            <h3 className="text-white font-bold text-sm truncate max-w-[180px] md:max-w-[250px]">{song.title}</h3>
+            <span className="text-[10px] text-slate-400 uppercase tracking-widest">Painel do Operador</span>
           </div>
           <button 
             onClick={() => setShowConfirmClose(true)}
             className="p-2 text-slate-400 hover:text-white transition-colors"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -433,15 +435,15 @@ export function ProjectionView({
         </div>
 
         {/* Playback Controls */}
-        <div className="p-4 md:p-6 bg-slate-900 border-t border-white/10 space-y-4 md:space-y-6">
+        <div className="p-3 md:p-4 bg-slate-900 border-t border-white/10 space-y-3 md:space-y-4">
           {audioElement && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
                 <span>{formatTime(audioCurrentTime)}</span>
                 <span>{formatTime(audioDuration)}</span>
               </div>
               <div 
-                className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
+                className="h-1 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const x = e.clientX - rect.left;
@@ -459,14 +461,14 @@ export function ProjectionView({
             </div>
           )}
 
-          <div className="flex flex-col gap-2 md:gap-4">
+          <div className="flex flex-col gap-1.5 md:gap-3">
             {/* Volume Control */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button 
                 onClick={() => handleVolumeChange(volume === 0 ? 1 : 0)}
                 className="text-slate-400 hover:text-white transition-colors"
               >
-                {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                {volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
               </button>
               <input 
                 type="range" 
@@ -475,90 +477,78 @@ export function ProjectionView({
                 step="0.01"
                 value={volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
               />
-              <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
+              <span className="text-[9px] font-mono text-slate-400 w-7 text-right">
                 {Math.round(volume * 100)}%
               </span>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between py-0.5">
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
-                <span className="text-[9px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
+                <span className="text-[8px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
               </div>
               <button 
                 onClick={() => setIsAutoAdvance(!isAutoAdvance)}
                 className={cn(
-                  "relative w-12 h-6 rounded-full transition-colors duration-300",
+                  "relative w-10 h-5 rounded-full transition-colors duration-300",
                   isAutoAdvance ? "bg-brand-primary" : "bg-slate-700"
                 )}
               >
                 <motion.div 
-                  className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm"
-                  animate={{ x: isAutoAdvance ? 24 : 0 }}
+                  className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
+                  animate={{ x: isAutoAdvance ? 20 : 0 }}
                 />
               </button>
             </div>
             
             {isAutoAdvance && (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="range" 
-                    min="2" 
-                    max="15" 
-                    step="1"
-                    value={autoAdvanceSeconds}
-                    onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-                  />
-                  <span className="text-[10px] font-mono text-slate-400 w-6">{autoAdvanceSeconds}s</span>
-                </div>
-                {onUpdateSong && (
-                  <button
-                    onClick={handleSaveTiming}
-                    disabled={isSavingTiming}
-                    className="w-full py-2 bg-white/5 hover:bg-white/10 text-[10px] font-bold text-slate-400 uppercase tracking-widest rounded-lg border border-white/5 transition-all flex items-center justify-center gap-2"
-                  >
-                    {isSavingTiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                    Salvar este tempo em todos os slides
-                  </button>
-                )}
+              <div className="flex items-center gap-2">
+                <input 
+                  type="range" 
+                  min="2" 
+                  max="15" 
+                  step="1"
+                  value={autoAdvanceSeconds}
+                  onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
+                  className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                />
+                <span className="text-[9px] font-mono text-slate-400 w-5">{autoAdvanceSeconds}s</span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-center gap-4 md:gap-6">
+          <div className="flex items-center justify-center gap-3 md:gap-5">
             <button 
               onClick={prevPhrase}
               disabled={currentPhraseIndex === 0}
-              className="p-2 md:p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+              className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
             >
-              <SkipBack className="w-6 h-6" />
+              <SkipBack className="w-5 h-5" />
             </button>
             <button 
               onClick={onTogglePlay}
-              className="w-12 h-12 md:w-16 md:h-16 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
+              className="w-10 h-10 md:w-14 md:h-14 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
             >
-              {isPlaying ? <Pause className="w-6 h-6 md:w-8 md:h-8 fill-current" /> : <Play className="w-6 h-6 md:w-8 md:h-8 fill-current ml-1" />}
+              {isPlaying ? <Pause className="w-5 h-5 md:w-7 md:h-7 fill-current" /> : <Play className="w-5 h-5 md:w-7 md:h-7 fill-current ml-1" />}
             </button>
             <button 
               onClick={nextPhrase}
               disabled={currentPhraseIndex === phrases.length - 1}
-              className="p-2 md:p-3 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+              className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
             >
-              <SkipForward className="w-6 h-6" />
+              <SkipForward className="w-5 h-5" />
             </button>
           </div>
 
           {/* Progress */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
               <span>Progresso</span>
               <span>{currentPhraseIndex + 1} / {phrases.length}</span>
             </div>
-            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-brand-primary"
                 initial={false}

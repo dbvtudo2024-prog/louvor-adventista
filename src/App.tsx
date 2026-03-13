@@ -1161,7 +1161,7 @@ export default function App() {
                     fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl",
                     fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                   )}>
-                    {selectedSong.lyrics.replace(/\[\d+\]\s*/g, '')}
+                    {selectedSong.lyrics.replace(/\[(?:T:)?\d+(?:[.,]\d+)?\]\s*/g, '')}
                   </div>
                 )}
               </div>

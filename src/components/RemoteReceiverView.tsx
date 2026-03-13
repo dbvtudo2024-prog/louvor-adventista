@@ -21,10 +21,10 @@ export function RemoteReceiverView({ roomId }: RemoteReceiverViewProps) {
   const phrases = useMemo(() => {
     if (!song) return [];
     let lyrics = song.lyrics || '';
-    const cleanLyrics = lyrics.replace(/^\[T:\d+\]\n?/, '');
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
     const lines = cleanLyrics.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     const parsed = lines.map(line => {
-      const match = line.match(/^\[(\d+)\]\s*(.*)/);
+      const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       return match ? match[2] : line;
     });
     return [song.title || 'Sem Título', ...parsed, ''];
@@ -73,7 +73,9 @@ export function RemoteReceiverView({ roomId }: RemoteReceiverViewProps) {
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         }
       } catch (err) {
-        console.error('Wake Lock error:', err);
+        if (err instanceof Error && err.name !== 'NotAllowedError') {
+          console.error('Wake Lock error:', err);
+        }
       }
     };
     requestWakeLock();

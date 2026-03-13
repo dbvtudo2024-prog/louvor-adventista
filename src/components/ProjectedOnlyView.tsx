@@ -66,7 +66,9 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         }
       } catch (err) {
-        console.error('Wake Lock error:', err);
+        if (err instanceof Error && err.name !== 'NotAllowedError') {
+          console.error('Wake Lock error:', err);
+        }
       }
     };
 
