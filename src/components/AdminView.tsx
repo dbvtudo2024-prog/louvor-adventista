@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+// Louvor Adventista - v1.0.2
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -28,7 +29,8 @@ import {
   RotateCcw,
   Undo2,
   PlayCircle,
-  PauseCircle
+  PauseCircle,
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getSupabase } from '../lib/supabase';
@@ -41,6 +43,402 @@ const ICON_MAP: Record<string, any> = {
   library: Library,
   scroll: Scroll,
 };
+
+// --- Sub-components to improve performance ---
+
+interface SongListProps {
+  songs: Song[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  collections: Collection[];
+  onEdit: (song: Song) => void;
+  onDelete: (id: string) => void;
+}
+
+const SongList = memo(({
+  songs,
+  isLoading,
+  searchQuery,
+  setSearchQuery,
+  collections,
+  onEdit,
+  onDelete
+}: SongListProps) => {
+  const filteredSongs = useMemo(() => {
+    return songs.filter(s => 
+      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.album_name?.toLowerCase().includes(searchQuery.toLowerCase())
+    ).sort((a, b) => a.title.localeCompare(b.title));
+  }, [songs, searchQuery]);
+
+  return (
+    <div className="space-y-6">
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Pesquisar músicas adicionadas..."
+          className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+        />
+      </div>
+
+      <div className="space-y-3">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <p className="text-xs font-bold uppercase tracking-widest">Carregando músicas...</p>
+          </div>
+        ) : filteredSongs.length > 0 ? (
+          filteredSongs.map((song) => (
+            <div 
+              key={song.id}
+              className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between gap-4 hover:border-brand-primary/20 transition-all group"
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
+                  {song.cover_url ? (
+                    <img src={song.cover_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <Music className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 truncate">{song.title}</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                    {song.album_name || 'Sem Álbum'} • {collections.find(c => c.id === song.collection_id)?.name}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => onEdit(song)}
+                  className="p-2 text-slate-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-all"
+                  title="Editar"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onDelete(song.id)}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  title="Excluir"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhuma música encontrada</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+interface RecordingModalProps {
+  isOpen: boolean;
+  recordingCurrentLine: number;
+  baseSlides: any[];
+  recordedTimings: number[];
+  markTiming: () => void;
+  stopRecording: () => void;
+  undoLastTiming: () => void;
+  resetRecording: () => void;
+}
+
+const RecordingModal = memo(({ 
+  isOpen, 
+  recordingCurrentLine, 
+  baseSlides, 
+  recordedTimings, 
+  markTiming, 
+  stopRecording, 
+  undoLastTiming,
+  resetRecording 
+}: RecordingModalProps) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl space-y-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+              <Mic className="w-5 h-5 text-red-500 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-xl font-serif font-bold text-brand-primary">Gravando Tempos</h3>
+              <p className="text-xs text-slate-500">Marque o fim de cada frase</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-full border border-red-100">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-6">
+          <div className="flex justify-between items-end">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              Slide {recordingCurrentLine + 1} de {baseSlides.length}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={undoLastTiming}
+                disabled={recordedTimings.length === 0}
+                className="p-2 text-slate-400 hover:text-brand-primary disabled:opacity-30 transition-colors"
+                title="Desfazer último tempo"
+              >
+                <Undo2 className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={resetRecording}
+                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                title="Reiniciar gravação"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-brand-primary/10 shadow-sm min-h-[120px] flex items-center justify-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-brand-primary/20" />
+            <div className="text-center space-y-2">
+              <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Frase Atual:</p>
+              <p className="text-xl font-serif italic text-brand-primary leading-relaxed">
+                {baseSlides[recordingCurrentLine]?.text || (recordingCurrentLine === baseSlides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}
+              </p>
+              {recordingCurrentLine < baseSlides.length - 1 && (
+                <div className="mt-4 pt-4 border-t border-slate-50">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">Próxima:</p>
+                  <p className="text-sm text-slate-500 italic">
+                    {baseSlides[recordingCurrentLine + 1]?.text || '(Slide Vazio Final)'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={markTiming}
+            className="w-full py-6 bg-brand-primary text-white rounded-2xl font-bold text-lg shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-3 active:scale-95 transition-all"
+          >
+            <PlayCircle className="w-6 h-6" />
+            PRÓXIMA FRASE
+          </button>
+          
+          <button
+            type="button"
+            onClick={stopRecording}
+            className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
+          >
+            Parar e Salvar
+          </button>
+        </div>
+
+        <p className="text-[10px] text-slate-400 text-center italic">
+          Dica: Clique no botão azul exatamente quando a frase terminar no áudio.
+        </p>
+      </motion.div>
+    </div>
+  );
+});
+
+interface ManualEditModalProps {
+  isOpen: boolean;
+  editingSlideTiming: { slide: any, index: number } | null;
+  tempTiming: string;
+  setTempTiming: (val: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+const ManualEditModal = memo(({
+  isOpen,
+  editingSlideTiming,
+  tempTiming,
+  setTempTiming,
+  onClose,
+  onSave
+}: ManualEditModalProps) => {
+  if (!isOpen || !editingSlideTiming) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
+            <Clock className="w-6 h-6 text-brand-primary" />
+          </div>
+          <div>
+            <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
+            <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
+          <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
+            "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
+          </p>
+
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="0"
+                max="60"
+                step="0.1"
+                autoFocus
+                value={tempTiming}
+                onChange={(e) => setTempTiming(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onSave();
+                  if (e.key === 'Escape') onClose();
+                }}
+                className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
+              />
+              <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
+            </div>
+            <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
+          >
+            Salvar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+});
+
+interface TimingEditorProps {
+  slides: any[];
+  isRecording: boolean;
+  recordingCurrentLine: number;
+  activeSlideRef: React.RefObject<HTMLDivElement | null>;
+  slidesContainerRef: React.RefObject<HTMLDivElement | null>;
+  onEditTiming: (slide: any, index: number) => void;
+  startRecording: () => void;
+  isAutoSaving: boolean;
+}
+
+const TimingEditor = memo(({
+  slides,
+  isRecording,
+  recordingCurrentLine,
+  activeSlideRef,
+  slidesContainerRef,
+  onEditTiming,
+  startRecording,
+  isAutoSaving
+}: TimingEditorProps) => {
+  return (
+    <div className="bg-slate-50 rounded-3xl border border-slate-100 p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-bold text-brand-primary">Editor de Sincronização</h4>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest">Ajuste o tempo de cada slide</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={startRecording}
+            className="px-4 py-2 bg-red-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+          >
+            <Mic className="w-3 h-3" />
+            Gravar em Tempo Real
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide" ref={slidesContainerRef}>
+        {slides.map((slide, idx) => (
+          <div
+            key={idx}
+            ref={idx === recordingCurrentLine && isRecording ? activeSlideRef : null}
+            className={cn(
+              "p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 group",
+              idx === recordingCurrentLine && isRecording 
+                ? "bg-red-50 border-red-200 ring-2 ring-red-500/20" 
+                : "bg-white border-slate-100 hover:border-brand-primary/20"
+            )}
+          >
+            <div className="flex items-center gap-4 min-w-0">
+              <div className={cn(
+                "w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0",
+                slide.isTitle ? "bg-brand-primary/10 text-brand-primary" : "bg-slate-50 text-slate-400"
+              )}>
+                {slide.isTitle ? 'T' : idx}
+              </div>
+              <p className={cn(
+                "text-sm truncate font-medium",
+                slide.isTitle ? "text-brand-primary font-bold" : "text-slate-600 italic"
+              )}>
+                {slide.text || (slide.isTitle ? 'Título' : '(Slide Vazio Final)')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onEditTiming(slide, idx)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:bg-brand-primary/5 hover:border-brand-primary/20 transition-all group/btn"
+            >
+              <Clock className="w-3 h-3 text-slate-400 group-hover/btn:text-brand-primary" />
+              <span className="text-xs font-bold text-brand-primary">{slide.timing}s</span>
+            </button>
+          </div>
+        ))}
+      </div>
+      
+      {isAutoSaving && (
+        <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-brand-primary uppercase tracking-widest animate-pulse">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Salvando alterações...
+        </div>
+      )}
+    </div>
+  );
+});
+
+// --- Main AdminView Component ---
 
 interface AdminViewProps {
   collections: Collection[];
@@ -188,7 +586,16 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showTimingEditor, editingSongId]);
 
-  const startRecording = () => {
+  const resetRecording = useCallback(() => {
+    if (window.confirm('Deseja apagar toda a gravação atual?')) {
+      setRecordedTimings([]);
+      setRecordingCurrentLine(0);
+      recordingAudio.currentTime = 0;
+      setLastMarkTime(0);
+    }
+  }, [recordingAudio]);
+
+  const startRecording = useCallback(() => {
     if (!audioUrl && !audioFile) {
       alert('Adicione um áudio primeiro para gravar os tempos.');
       return;
@@ -206,9 +613,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setRecordingCurrentLine(0);
     setRecordedTimings([]);
     setLastMarkTime(0);
-  };
+  }, [audioUrl, audioFile, recordingAudio]);
 
-  const stopRecording = (finalTimings?: number[] | React.MouseEvent) => {
+  const stopRecording = useCallback((finalTimings?: number[] | React.MouseEvent) => {
     recordingAudio.pause();
     setIsRecording(false);
     setIsRecordingFinished(true);
@@ -219,9 +626,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     
     // Force save on stop using provided timings or state
     applyRecordedTimings(timingsToUse, true);
-  };
+  }, [recordingAudio, recordedTimings]);
 
-  const markTiming = () => {
+  const markTiming = useCallback(() => {
     const currentTime = recordingAudio.currentTime;
     const duration = parseFloat((currentTime - lastMarkTime).toFixed(1));
     
@@ -231,10 +638,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setRecordedTimings(newTimings);
     setLastMarkTime(currentTime);
     
-    // Don't update lyrics in real-time during recording to avoid lag
-    // applyRecordedTimings(newTimings); 
-
-    const totalSlidesCount = slides.length;
+    const totalSlidesCount = baseSlides.length;
     
     if (recordingCurrentLine < totalSlidesCount - 1) {
       setRecordingCurrentLine(prev => prev + 1);
@@ -242,9 +646,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       // Finished recording all lines
       stopRecording(newTimings);
     }
-  };
+  }, [recordingAudio, lastMarkTime, recordedTimings, baseSlides.length, recordingCurrentLine, stopRecording]);
 
-  const undoLastTiming = () => {
+  const undoLastTiming = useCallback(() => {
     if (recordedTimings.length === 0) return;
     
     const newTimings = recordedTimings.slice(0, -1);
@@ -255,10 +659,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     recordingAudio.currentTime = previousTotalTime;
     setLastMarkTime(previousTotalTime);
     setRecordingCurrentLine(prev => Math.max(0, prev - 1));
-
-    // Don't update lyrics in real-time during recording to avoid lag
-    // applyRecordedTimings(newTimings);
-  };
+  }, [recordedTimings, recordingAudio]);
 
   const applyRecordedTimings = (timings: number[], forceSave = false) => {
     const currentLyrics = lyricsRef.current;
@@ -458,6 +859,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setAdminMode('add');
   };
 
+  const handleEditTiming = useCallback((slide: any, index: number) => {
+    setEditingSlideTiming({ slide, index });
+    setTempTiming(slide.timing);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = getSupabase();
@@ -614,634 +1020,281 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
       {adminMode === 'add' ? (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Collection Selection */}
+          {/* Coleção */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Coleção</label>
-            <select
-              value={selectedCollectionId}
-              onChange={(e) => setSelectedCollectionId(e.target.value)}
-              className="w-full p-4 bg-white rounded-2xl border border-slate-100 shadow-sm outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all font-bold text-brand-primary appearance-none"
-              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.5rem' }}
-            >
-              {collections.map((col) => (
-                <option key={col.id} value={col.id}>
-                  {col.name}
-                </option>
-              ))}
-            </select>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Coleção</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {collections.map((col) => {
+                const Icon = ICON_MAP[col.icon] || Music;
+                return (
+                  <button
+                    key={col.id}
+                    type="button"
+                    onClick={() => setSelectedCollectionId(col.id)}
+                    className={cn(
+                      "p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all",
+                      selectedCollectionId === col.id 
+                        ? "bg-brand-primary/5 border-brand-primary text-brand-primary shadow-sm" 
+                        : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
+                    )}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">{col.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-6">
-          {/* Number (for Hinario) */}
-          {(() => {
-            const selectedCol = collections.find(c => c.id === selectedCollectionId);
-            const name = selectedCol?.name.toLowerCase() || '';
-            const id = selectedCollectionId.toLowerCase();
-            
-            if (id === 'hinario' || name.includes('hinário') || name.includes('hino')) {
-              return (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Hash className="w-3 h-3" /> Número do Hino
-                  </label>
-                  <input
-                    type="number"
-                    value={number}
-                    onChange={(e) => setNumber(e.target.value)}
-                    placeholder="Ex: 1"
-                    className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                  />
-                </div>
-              );
-            }
-            return null;
-          })()}
-
-          {/* Album Name (for CDs and Coletaneas) */}
-          {(() => {
-            const selectedCol = collections.find(c => c.id === selectedCollectionId);
-            const name = selectedCol?.name.toLowerCase() || '';
-            const id = selectedCollectionId.toLowerCase();
-            
-            const isJA = id === 'ja' || name.includes('jovens') || name.includes('ja');
-            const isColetaneas = id === 'coletaneas' || name.includes('coletânea');
-            const isDoxologia = id === 'doxologia' || name.includes('doxologia');
-            
-            if (isJA || isColetaneas) {
-              return (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Disc className="w-3 h-3" /> Nome do CD / Álbum
-                    </label>
-                    <input
-                      type="text"
-                      value={albumName}
-                      onChange={(e) => setAlbumName(e.target.value)}
-                      placeholder="Ex: Castelo Forte"
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> Capa do Álbum
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                        id="cover-upload"
-                      />
-                      <label 
-                        htmlFor="cover-upload"
-                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
-                      >
-                        {coverFile ? (
-                          <div className="flex items-center gap-3">
-                            <img src={URL.createObjectURL(coverFile)} className="w-8 h-8 rounded-lg object-cover" />
-                            <span className="text-sm font-medium text-brand-primary truncate max-w-[150px]">
-                              {coverFile.name}
-                            </span>
-                          </div>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-400">Escolher imagem...</span>
-                          </>
-                        )}
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                          <LinkIcon className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <input
-                          type="url"
-                          value={coverUrl}
-                          onChange={(e) => setCoverUrl(e.target.value)}
-                          placeholder="Ou cole a URL da imagem..."
-                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Calendar className="w-3 h-3" /> Ano de Lançamento
-                    </label>
-                    <input
-                      type="number"
-                      value={year}
-                      onChange={(e) => setYear(e.target.value)}
-                      placeholder="Ex: 2024"
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                    />
-                  </div>
-                </>
-              );
-            }
-
-            if (isDoxologia) {
-              return (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Scroll className="w-3 h-3" /> Categoria de Doxologia
-                    </label>
-                    <select
-                      value={doxologiaCategory}
-                      onChange={(e) => setDoxologiaCategory(e.target.value)}
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all font-bold text-brand-primary appearance-none"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.5rem' }}
-                    >
-                      <option value="">Selecione uma categoria...</option>
-                      {DOXOLOGIA_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> Capa da Doxologia
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                        id="doxologia-cover-upload"
-                      />
-                      <label 
-                        htmlFor="doxologia-cover-upload"
-                        className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
-                      >
-                        {coverFile ? (
-                          <div className="flex items-center gap-3">
-                            <img src={URL.createObjectURL(coverFile)} className="w-8 h-8 rounded-lg object-cover" />
-                            <span className="text-sm font-medium text-brand-primary truncate max-w-[150px]">
-                              {coverFile.name}
-                            </span>
-                          </div>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-400">Escolher imagem...</span>
-                          </>
-                        )}
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                          <LinkIcon className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <input
-                          type="url"
-                          value={coverUrl}
-                          onChange={(e) => setCoverUrl(e.target.value)}
-                          placeholder="Ou cole a URL da imagem..."
-                          className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              );
-            }
-            return null;
-          })()}
-
-          {/* Title */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Type className="w-3 h-3" /> Título da Música
-            </label>
-            <input
-              required
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Ó Deus de Amor"
-              className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-            />
-          </div>
-
-          {/* Lyrics */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <FileText className="w-3 h-3" /> Letra
-            </label>
-            <textarea
-              required
-              rows={8}
-              value={lyrics}
-              onChange={(e) => setLyrics(e.target.value)}
-              placeholder="Digite a letra aqui..."
-              className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all resize-none min-h-[200px]"
-            />
-            
-            {lyrics.trim() && (
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowTimingEditor(!showTimingEditor)}
-                  className="flex items-center gap-2 text-xs font-bold text-brand-primary uppercase tracking-widest hover:opacity-80 transition-opacity"
-                >
-                  <Clock className="w-4 h-4" />
-                  {showTimingEditor ? 'Ocultar Editor de Tempos' : 'Configurar Tempos dos Slides'}
-                </button>
-
-                <AnimatePresence>
-                  {showTimingEditor && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider leading-tight">
-                            Defina o tempo (em segundos) para cada slide:
-                          </p>
-                          
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                            {isRecording ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (window.confirm('Deseja apagar toda a gravação atual?')) {
-                                      setRecordedTimings([]);
-                                      setRecordingCurrentLine(0);
-                                      recordingAudio.currentTime = 0;
-                                      setLastMarkTime(0);
-                                    }
-                                  }}
-                                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-red-500 transition-colors"
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5" /> Reiniciar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={undoLastTiming}
-                                  disabled={recordedTimings.length === 0}
-                                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-brand-primary disabled:opacity-30 transition-colors"
-                                >
-                                  <Undo2 className="w-3.5 h-3.5" /> Desfazer
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={stopRecording}
-                                  className="flex items-center gap-1.5 text-[10px] font-bold text-red-500 uppercase tracking-widest hover:opacity-80 transition-opacity"
-                                >
-                                  <PauseCircle className="w-3.5 h-3.5" /> Parar
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={startRecording}
-                                className="flex items-center gap-1.5 text-[10px] font-bold text-brand-primary uppercase tracking-widest hover:opacity-80 transition-opacity bg-brand-primary/5 px-3 py-1.5 rounded-lg border border-brand-primary/10"
-                              >
-                                <Mic className="w-3.5 h-3.5" /> Gravar em Tempo Real
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {isRecordingFinished && !isRecording && (
-                          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 text-center space-y-3 animate-in fade-in slide-in-from-top-4 duration-300">
-                            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
-                              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-emerald-800">Gravação Concluída!</p>
-                              <p className="text-[10px] text-emerald-600">Os tempos foram salvos automaticamente.</p>
-                            </div>
-                            <button 
-                              type="button"
-                              onClick={() => setIsRecordingFinished(false)}
-                              className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest hover:underline"
-                            >
-                              Fechar Aviso
-                            </button>
-                          </div>
-                        )}
-
-                        {isRecording && (
-                          <div className="p-4 bg-brand-primary/5 rounded-xl border border-brand-primary/10 space-y-4 animate-pulse-subtle">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">
-                                Gravando Slide {recordingCurrentLine + 1} de {slides.length}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                                <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
-                              </div>
-                            </div>
-                            
-                            <div className="bg-white p-4 rounded-lg border border-brand-primary/20 shadow-sm min-h-[60px] flex items-center justify-center relative overflow-hidden">
-                              <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary/20" />
-                              <div className="text-center space-y-1">
-                                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Frase Atual:</p>
-                                <p className="text-sm font-serif italic text-brand-primary">
-                                  {slides[recordingCurrentLine]?.text || (recordingCurrentLine === slides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}
-                                </p>
-                                {recordingCurrentLine < slides.length - 1 && (
-                                  <div className="mt-2 pt-2 border-t border-slate-50">
-                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Próxima:</p>
-                                    <p className="text-[11px] text-slate-500 italic">
-                                      {slides[recordingCurrentLine + 1]?.text || '(Slide Vazio Final)'}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <button
-                              type="button"
-                              onClick={markTiming}
-                              className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 active:scale-95 transition-all"
-                            >
-                              <PlayCircle className="w-5 h-5" />
-                              Próxima Frase (Marcar Tempo)
-                            </button>
-                            
-                            <p className="text-[9px] text-slate-400 text-center italic">Clique no botão acima exatamente quando a frase terminar no áudio.</p>
-                          </div>
-                        )}
-
-                        <div 
-                          ref={slidesContainerRef}
-                          className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar scroll-smooth"
-                        >
-                          {slides.map((slide, idx) => {
-                              const isCurrent = isRecording && idx === recordingCurrentLine;
-                              const isRecorded = isRecording && idx < recordingCurrentLine;
-
-                              return (
-                                <div 
-                                  key={idx} 
-                                  ref={isCurrent ? activeSlideRef : null}
-                                  className={cn(
-                                    "flex items-center gap-3 p-3 rounded-xl border transition-all",
-                                    isCurrent ? "bg-brand-primary/5 border-brand-primary shadow-md scale-[1.02]" : 
-                                    isRecorded ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"
-                                  )}
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      {slide.isTitle && (
-                                        <span className="text-[8px] font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded uppercase tracking-widest">Título</span>
-                                      )}
-                                      <p className={cn(
-                                        "text-xs truncate italic",
-                                        isCurrent ? "text-brand-primary font-bold" : "text-slate-500"
-                                      )}>{slide.text || (idx === slides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingSlideTiming({ slide, index: idx });
-                                        setTempTiming(slide.timing.toString());
-                                      }}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-primary/10 rounded-lg border border-slate-100 transition-colors group/btn"
-                                    >
-                                      <Clock className="w-3.5 h-3.5 text-slate-400 group-hover/btn:text-brand-primary" />
-                                      <span className="text-xs font-bold text-brand-primary">{slide.timing}s</span>
-                                    </button>
-                                  </div>
-                                </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
-          </div>
-
-          {/* Audio URL / File */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <FileAudio className="w-3 h-3" /> Arquivo de Áudio (MP3)
-            </label>
-            <div className="flex flex-col gap-3">
-              <input
-                type="file"
-                accept="audio/mpeg"
-                onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
-                className="hidden"
-                id="audio-upload"
-              />
-              <label 
-                htmlFor="audio-upload"
-                className="w-full p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 transition-colors"
+          {/* Categoria Doxologia */}
+          {selectedCollectionId === 'doxologia' && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Categoria de Doxologia</label>
+              <select
+                value={doxologiaCategory}
+                onChange={(e) => setDoxologiaCategory(e.target.value)}
+                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all font-bold text-slate-700"
               >
-                {audioFile ? (
-                  <span className="text-sm font-medium text-brand-primary truncate max-w-[200px]">
-                    {audioFile.name}
-                  </span>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm text-slate-400">Escolher áudio...</span>
-                  </>
-                )}
-              </label>
+                <option value="">Selecione uma categoria...</option>
+                {DOXOLOGIA_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Informações Básicas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Número (Opcional)</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                  <LinkIcon className="w-3 h-3 text-slate-400" />
-                </div>
+                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
-                  type="url"
-                  value={audioUrl}
-                  onChange={(e) => setAudioUrl(e.target.value)}
-                  placeholder="Ou cole a URL do MP3..."
-                  className="w-full pl-10 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
+                  type="number"
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                  placeholder="Ex: 01"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Título da Música</label>
+              <div className="relative">
+                <Type className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Ex: Grandioso és Tu"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
                 />
               </div>
             </div>
           </div>
-        </div>
 
+          {/* Álbum e Ano */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Álbum / Cantor</label>
+              <div className="relative">
+                <Disc className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  value={albumName}
+                  onChange={(e) => setAlbumName(e.target.value)}
+                  placeholder="Ex: Hinário Adventista"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Ano</label>
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  placeholder="Ex: 2024"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Letra e Sincronização */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between ml-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Letra do Hino</label>
+              <button
+                type="button"
+                onClick={() => setShowTimingEditor(!showTimingEditor)}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
+                  showTimingEditor ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                )}
+              >
+                <Clock className="w-3 h-3" />
+                {showTimingEditor ? 'Fechar Editor de Tempos' : 'Abrir Editor de Tempos'}
+              </button>
+            </div>
+            
+            {showTimingEditor ? (
+              <TimingEditor 
+                slides={slides}
+                isRecording={isRecording}
+                recordingCurrentLine={recordingCurrentLine}
+                activeSlideRef={activeSlideRef}
+                slidesContainerRef={slidesContainerRef}
+                onEditTiming={handleEditTiming}
+                startRecording={startRecording}
+                isAutoSaving={isAutoSaving}
+              />
+            ) : (
+              <div className="relative">
+                <FileText className="absolute left-4 top-4 w-5 h-5 text-slate-400" />
+                <textarea
+                  required
+                  value={lyrics}
+                  onChange={(e) => setLyrics(e.target.value)}
+                  placeholder="Cole a letra aqui...&#10;Use [T:5] para o tempo do título.&#10;Use [5] no início da linha para o tempo do slide."
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-3xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all min-h-[300px] font-serif italic text-lg leading-relaxed"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Áudio e Capa */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Áudio (Arquivo ou URL)</label>
+              <div className="space-y-3">
+                <div className="relative">
+                  <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="url"
+                    value={audioUrl}
+                    onChange={(e) => setAudioUrl(e.target.value)}
+                    placeholder="URL do arquivo .mp3"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                  />
+                </div>
+                <label className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
+                  <Upload className="w-5 h-5 text-slate-400 group-hover:text-brand-primary" />
+                  <span className="text-xs font-bold text-slate-500 group-hover:text-brand-primary">
+                    {audioFile ? audioFile.name : 'Ou selecione um arquivo local'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Capa (Arquivo ou URL)</label>
+              <div className="space-y-3">
+                <div className="relative">
+                  <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="url"
+                    value={coverUrl}
+                    onChange={(e) => setCoverUrl(e.target.value)}
+                    placeholder="URL da imagem da capa"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                  />
+                </div>
+                <label className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
+                  <Upload className="w-5 h-5 text-slate-400 group-hover:text-brand-primary" />
+                  <span className="text-xs font-bold text-slate-500 group-hover:text-brand-primary">
+                    {coverFile ? coverFile.name : 'Ou selecione uma imagem local'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Botão de Envio */}
           <button
             type="submit"
             disabled={isSubmitting}
             className={cn(
-              "w-full py-5 rounded-[2rem] font-bold text-white shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95",
-              success ? "bg-emerald-500" : "bg-brand-primary hover:scale-[1.02]"
+              "w-full py-5 rounded-2xl font-bold text-white shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95",
+              success 
+                ? "bg-green-500 shadow-green-500/20" 
+                : "bg-brand-primary shadow-brand-primary/20 hover:scale-[1.01]"
             )}
           >
             {isSubmitting ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>Salvando Música...</span>
+              </>
             ) : success ? (
               <>
                 <CheckCircle2 className="w-6 h-6" />
-                {editingSongId ? 'Atualizado!' : 'Salvo com Sucesso!'}
+                <span>Música Salva com Sucesso!</span>
               </>
             ) : (
               <>
                 <Save className="w-6 h-6" />
-                {editingSongId ? 'Atualizar Música' : 'Salvar Música'}
+                <span>{editingSongId ? 'Atualizar Música' : 'Salvar Música'}</span>
               </>
             )}
           </button>
         </form>
       ) : (
-        <div className="space-y-6">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar músicas adicionadas..."
-              className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-            />
-          </div>
-
-          {/* Songs List */}
-          <div className="space-y-3">
-            {isLoadingSongs ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-                <Loader2 className="w-8 h-8 animate-spin" />
-                <p className="text-xs font-bold uppercase tracking-widest">Carregando músicas...</p>
-              </div>
-            ) : filteredSongs.length > 0 ? (
-              filteredSongs.map((song) => (
-                <div 
-                  key={song.id}
-                  className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between gap-4 hover:border-brand-primary/20 transition-all group"
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
-                      {song.cover_url ? (
-                        <img src={song.cover_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Music className="w-6 h-6" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-slate-900 truncate">{song.title}</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
-                        {song.album_name || 'Sem Álbum'} • {collections.find(c => c.id === song.collection_id)?.name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleEditSong(song)}
-                      className="p-2 text-slate-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-all"
-                      title="Editar"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteSong(song.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhuma música encontrada</p>
-              </div>
-            )}
-          </div>
-        </div>
+        <SongList 
+          songs={songs}
+          isLoading={isLoadingSongs}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          collections={collections}
+          onEdit={handleEditSong}
+          onDelete={handleDeleteSong}
+        />
       )}
       </motion.div>
 
-      {/* Modal de Edição de Tempo */}
+      {/* Modal de Gravação em Tempo Real */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence mode="wait">
-          {editingSlideTiming && (
-            <motion.div
-              key="timing-modal-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
-              onClick={() => setEditingSlideTiming(null)}
-            >
-              <motion.div
-                key="timing-modal-content"
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-brand-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
-                    <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
-                  </div>
-                </div>
+          <RecordingModal 
+            isOpen={isRecording}
+            recordingCurrentLine={recordingCurrentLine}
+            baseSlides={baseSlides}
+            recordedTimings={recordedTimings}
+            markTiming={markTiming}
+            stopRecording={() => stopRecording()}
+            undoLastTiming={undoLastTiming}
+            resetRecording={resetRecording}
+          />
+        </AnimatePresence>,
+        document.body
+      )}
 
-                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
-                  <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
-                    "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
-                  </p>
-
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min="0"
-                        max="60"
-                        step="0.1"
-                        autoFocus
-                        value={tempTiming}
-                        onChange={(e) => setTempTiming(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveTiming();
-                          if (e.key === 'Escape') setEditingSlideTiming(null);
-                        }}
-                        className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
-                      />
-                      <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditingSlideTiming(null)}
-                    className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveTiming}
-                    className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
-                  >
-                    Salvar
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
+      {/* Modal de Edição de Tempo Manual */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence mode="wait">
+          <ManualEditModal 
+            isOpen={!!editingSlideTiming}
+            editingSlideTiming={editingSlideTiming}
+            tempTiming={tempTiming}
+            setTempTiming={setTempTiming}
+            onClose={() => setEditingSlideTiming(null)}
+            onSave={handleSaveTiming}
+          />
         </AnimatePresence>,
         document.body
       )}
