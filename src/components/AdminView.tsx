@@ -438,7 +438,7 @@ const TimingEditor = memo(({
 
 interface AdminViewProps {
   collections: Collection[];
-  onSongUpdated?: () => void;
+  onSongUpdated?: () => Promise<void> | void;
 }
 
 export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
@@ -513,7 +513,18 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     } catch (error: any) {
       console.error("AI Sync Error:", error);
       const errorMessage = error.message || "Erro desconhecido";
-      alert(`Erro ao sincronizar com IA: ${errorMessage}\n\nVerifique se a chave de API está configurada corretamente.`);
+      
+      let userMessage = `Erro ao sincronizar com IA: ${errorMessage}`;
+      
+      if (errorMessage.toLowerCase().includes("chave") || errorMessage.toLowerCase().includes("api_key")) {
+        userMessage += "\n\nVerifique se a chave de API (GEMINI_API_KEY) está configurada corretamente nos Segredos do AI Studio.";
+      } else if (errorMessage.toLowerCase().includes("cota") || errorMessage.toLowerCase().includes("quota")) {
+        userMessage += "\n\nO limite de uso gratuito foi atingido. Tente novamente em alguns minutos.";
+      } else if (errorMessage.toLowerCase().includes("longa")) {
+        userMessage += "\n\nTente sincronizar partes menores da música.";
+      }
+      
+      alert(userMessage);
     } finally {
       setIsSyncingAI(false);
     }
@@ -731,7 +742,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
             // Update local songs list to avoid stale data
             setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
             
-            if (onSongUpdated) onSongUpdated();
+            if (onSongUpdated) await onSongUpdated();
             
             // Notify external windows
             if (channelRef.current) {
@@ -799,7 +810,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         try {
           await supabase.from('songs').update({ lyrics: updatedLyrics }).eq('id', editingSongId);
           setSongs(prev => prev.map(s => s.id === editingSongId ? { ...s, lyrics: updatedLyrics } : s));
-          if (onSongUpdated) onSongUpdated();
+          if (onSongUpdated) await onSongUpdated();
           
           if (channelRef.current) {
             channelRef.current.postMessage({ 
@@ -968,7 +979,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       }
 
       setSuccess(true);
-      if (onSongUpdated) onSongUpdated();
+      if (onSongUpdated) await onSongUpdated();
       // Reset form
       setEditingSongId(null);
       setNumber('');

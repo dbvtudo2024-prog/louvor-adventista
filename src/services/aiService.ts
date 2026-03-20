@@ -90,6 +90,7 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       ${cleanLyrics}`,
       config: {
         temperature: 0.1,
+        maxOutputTokens: 2048,
       },
     });
 
@@ -102,13 +103,28 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
     return resultText;
   } catch (error: any) {
     console.error("Erro ao gerar tempos com IA:", error);
-    // Provide a more descriptive error message
-    if (error.message?.includes("API_KEY_INVALID")) {
+    
+    // Extract the most meaningful error message
+    let message = "Erro desconhecido na API Gemini";
+    
+    if (typeof error === 'string') {
+      message = error;
+    } else if (error instanceof Error) {
+      message = error.message;
+    } else if (error && typeof error === 'object') {
+      message = error.message || JSON.stringify(error);
+    }
+
+    if (message.includes("API_KEY_INVALID")) {
       throw new Error("Chave de API inválida. Verifique se a GEMINI_API_KEY está correta.");
     }
-    if (error.message?.includes("quota")) {
+    if (message.toLowerCase().includes("quota")) {
       throw new Error("Limite de cota da API Gemini excedido. Tente novamente mais tarde.");
     }
-    throw error;
+    if (message.toLowerCase().includes("max tokens") || message.toLowerCase().includes("finish_reason: length")) {
+      throw new Error("A letra da música é muito longa para ser processada pela IA de uma só vez. Tente dividir a música ou simplificar a letra.");
+    }
+    
+    throw new Error(message);
   }
 }
