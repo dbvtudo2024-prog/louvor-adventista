@@ -64,27 +64,26 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Você é um assistente especializado em sincronização de letras de músicas para projeção em igrejas.
-      Analise a letra da música "${title}" e estime o tempo de início (em segundos) para cada frase.
+      contents: `Você é um assistente especializado em sincronização de letras para projeção de hinos e louvores.
+      Sua tarefa é analisar a letra da música "${title}" e definir a DURAÇÃO (em segundos) que cada slide deve permanecer na tela.
       
-      Regras CRÍTICAS:
-      1. O formato da letra deve seguir este padrão:
-         [T:tempo_titulo]
-         [tempo_frase1] Frase 1
-         [tempo_frase2] Frase 2
-      2. O tempo do título [T:...] deve ser sempre [T:0].
-      3. Estime intervalos realistas baseados no ritmo natural da música (geralmente entre 4 a 12 segundos por frase).
-      4. Se houver um "Coro" ou "Refrão", mantenha o texto e adicione o tempo correspondente.
-      5. Não pule nenhuma linha. Não adicione comentários.
-      6. Retorne APENAS o texto formatado.
-      7. Certifique-se de que cada frase tenha um tempo associado no início da linha, entre colchetes.
+      Regras CRÍTICAS de Sincronização:
+      1. O formato deve ser:
+         [T:tempo_introducao] Título
+         [duracao_slide1] Texto do Slide 1
+         [duracao_slide2] Texto do Slide 2
+      2. O valor entre colchetes é a DURAÇÃO (quanto tempo o slide fica visível), NÃO o tempo de início.
+      3. Estime a introdução instrumental [T:...] (geralmente entre 5 a 15 segundos).
+      4. Estime durações realistas para cada frase (geralmente entre 4 a 8 segundos).
+      5. Adicione 1 ou 2 segundos extras na última linha de cada estrofe para a transição musical.
+      6. Retorne APENAS o texto formatado, sem comentários ou explicações.
+      7. Use PONTO como separador decimal (ex: 5.5).
       
       Exemplo de retorno esperado:
-      [T:0]
-      [5] Primeira frase da música
-      [12] Segunda frase da música
-      [20] Refrão da música
-      [28] Próxima frase após o refrão
+      [T:8] Título do Hino
+      [5.5] Primeira frase da música
+      [6.0] Segunda frase da música
+      [7.5] Última frase da estrofe (com pausa)
       
       Letra para processar:
       ${cleanLyrics}`,
