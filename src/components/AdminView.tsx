@@ -78,64 +78,64 @@ const SongList = memo(({
   return (
     <div className="space-y-6">
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Pesquisar músicas adicionadas..."
-          className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
+          placeholder="Pesquisar músicas..."
+          className="w-full pl-10 pr-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-sm"
         />
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin" />
-            <p className="text-xs font-bold uppercase tracking-widest">Carregando músicas...</p>
+          <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <p className="text-[10px] font-bold uppercase tracking-widest">Carregando músicas...</p>
           </div>
         ) : filteredSongs.length > 0 ? (
           filteredSongs.map((song) => (
-            <div 
+            <div
               key={song.id}
-              className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between gap-4 hover:border-brand-primary/20 transition-all group"
+              className="p-1.5 bg-white rounded-xl border border-slate-100 flex items-center justify-between gap-2 hover:border-brand-primary/20 transition-all group"
             >
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 overflow-hidden">
                   {song.cover_url ? (
                     <img src={song.cover_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <Music className="w-6 h-6" />
+                    <Music className="w-3.5 h-3.5" />
                   )}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-bold text-slate-900 truncate">{song.title}</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                  <h3 className="text-[11px] font-bold text-slate-900 truncate leading-tight">{song.title}</h3>
+                  <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider truncate leading-tight">
                     {song.album_name || 'Sem Álbum'} • {collections.find(c => c.id === song.collection_id)?.name}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => onEdit(song)}
-                  className="p-2 text-slate-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-all"
+                  className="p-1.5 text-slate-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-all"
                   title="Editar"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Edit2 className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => onDelete(song.id)}
-                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                   title="Excluir"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           ))
         ) : (
-          <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhuma música encontrada</p>
+          <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nenhuma música encontrada</p>
           </div>
         )}
       </div>
@@ -167,67 +167,67 @@ const RecordingModal = memo(({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl space-y-6"
+        className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-              <Mic className="w-5 h-5 text-red-500 animate-pulse" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+              <Mic className="w-4 h-4 text-red-500 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-xl font-serif font-bold text-brand-primary">Gravando Tempos</h3>
-              <p className="text-xs text-slate-500">Marque o fim de cada frase</p>
+              <h3 className="text-base font-serif font-bold text-brand-primary">Gravando Tempos</h3>
+              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Marque o fim de cada frase</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-full border border-red-100">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-red-50 rounded-full border border-red-100">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest">Ao Vivo</span>
           </div>
         </div>
 
-        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-6">
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
           <div className="flex justify-between items-end">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
               Slide {recordingCurrentLine + 1} de {baseSlides.length}
             </span>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <button
                 type="button"
                 onClick={undoLastTiming}
                 disabled={recordedTimings.length === 0}
-                className="p-2 text-slate-400 hover:text-brand-primary disabled:opacity-30 transition-colors"
+                className="p-1.5 text-slate-400 hover:text-brand-primary disabled:opacity-30 transition-colors"
                 title="Desfazer último tempo"
               >
-                <Undo2 className="w-5 h-5" />
+                <Undo2 className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={resetRecording}
-                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
                 title="Reiniciar gravação"
               >
-                <RotateCcw className="w-5 h-5" />
+                <RotateCcw className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-brand-primary/10 shadow-sm min-h-[120px] flex items-center justify-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-brand-primary/20" />
-            <div className="text-center space-y-2">
-              <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Frase Atual:</p>
-              <p className="text-xl font-serif italic text-brand-primary leading-relaxed">
+          <div className="bg-white p-4 rounded-xl border border-brand-primary/10 shadow-sm min-h-[100px] flex items-center justify-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary/20" />
+            <div className="text-center space-y-1">
+              <p className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Frase Atual:</p>
+              <p className="text-lg font-serif italic text-brand-primary leading-relaxed">
                 {baseSlides[recordingCurrentLine]?.text || (recordingCurrentLine === baseSlides.length - 1 ? '(Slide Vazio Final)' : '(Slide Vazio)')}
               </p>
               {recordingCurrentLine < baseSlides.length - 1 && (
-                <div className="mt-4 pt-4 border-t border-slate-50">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">Próxima:</p>
-                  <p className="text-sm text-slate-500 italic">
+                <div className="mt-3 pt-3 border-t border-slate-50">
+                  <p className="text-[8px] text-slate-400 uppercase tracking-widest">Próxima:</p>
+                  <p className="text-xs text-slate-500 italic">
                     {baseSlides[recordingCurrentLine + 1]?.text || '(Slide Vazio Final)'}
                   </p>
                 </div>
@@ -236,13 +236,13 @@ const RecordingModal = memo(({
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           <button
             type="button"
             onClick={markTiming}
-            className="w-full py-6 bg-brand-primary text-white rounded-2xl font-bold text-lg shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-3 active:scale-95 transition-all"
+            className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold text-base shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 active:scale-95 transition-all"
           >
-            <PlayCircle className="w-6 h-6" />
+            <PlayCircle className="w-5 h-5" />
             PRÓXIMA FRASE
           </button>
           
@@ -284,34 +284,34 @@ const ManualEditModal = memo(({
 
   return (
     <div 
-      className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        initial={{ scale: 0.95, opacity: 0, y: 10 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl"
+        exit={{ scale: 0.95, opacity: 0, y: 10 }}
+        className="bg-white rounded-3xl p-5 max-w-xs w-full shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
-            <Clock className="w-6 h-6 text-brand-primary" />
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-primary/10 flex items-center justify-center">
+            <Clock className="w-4 h-4 text-brand-primary" />
           </div>
           <div>
-            <h3 className="text-xl font-serif font-bold text-brand-primary">Editar Tempo</h3>
-            <p className="text-xs text-slate-500">Ajuste a duração deste slide</p>
+            <h3 className="text-base font-serif font-bold text-brand-primary">Editar Tempo</h3>
+            <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Ajuste a duração</p>
           </div>
         </div>
 
-        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Texto do Slide</p>
-          <p className="text-sm text-brand-primary font-medium text-center italic mb-6">
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-4">
+          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-center">Texto do Slide</p>
+          <p className="text-[11px] text-brand-primary font-medium text-center italic mb-3 line-clamp-2 leading-relaxed">
             "{editingSlideTiming.slide.text || (editingSlideTiming.slide.isTitle ? 'Título' : 'Slide Vazio')}"
           </p>
 
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <input
                 type="number"
                 min="0"
@@ -324,28 +324,21 @@ const ManualEditModal = memo(({
                   if (e.key === 'Enter') onSave();
                   if (e.key === 'Escape') onClose();
                 }}
-                className="w-24 p-4 bg-white rounded-2xl border border-slate-200 text-center text-2xl font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
+                className="w-16 p-2 bg-white rounded-lg border border-slate-200 text-center text-lg font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
               />
-              <span className="text-lg font-bold text-slate-400 uppercase">seg</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">seg</span>
             </div>
-            <p className="text-[10px] text-slate-400">Use pontos para decimais (ex: 5.5)</p>
+            <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tighter">Use pontos para decimais (ex: 5.5)</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex justify-center">
           <button
             type="button"
             onClick={onClose}
-            className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95"
+            className="px-5 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
           >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            className="py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all active:scale-95"
-          >
-            Salvar
+            Fechar
           </button>
         </div>
       </motion.div>
@@ -375,45 +368,45 @@ const TimingEditor = memo(({
   isAutoSaving
 }: TimingEditorProps) => {
   return (
-    <div className="bg-slate-50 rounded-3xl border border-slate-100 p-6 space-y-6">
+    <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-sm font-bold text-brand-primary">Editor de Sincronização</h4>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest">Ajuste o tempo de cada slide</p>
+          <h4 className="text-[10px] font-bold text-brand-primary uppercase tracking-widest">Editor de Sincronização</h4>
+          <p className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Ajuste o tempo de cada slide</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
           <button
             type="button"
             onClick={startRecording}
-            className="px-4 py-2 bg-red-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+            className="px-2.5 py-1 bg-red-500 text-white rounded-lg text-[8px] font-bold uppercase tracking-widest flex items-center gap-1 hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
           >
-            <Mic className="w-3 h-3" />
-            Gravar em Tempo Real
+            <Mic className="w-2.5 h-2.5" />
+            Gravar
           </button>
         </div>
       </div>
 
-      <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide" ref={slidesContainerRef}>
+      <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1 scrollbar-hide" ref={slidesContainerRef}>
         {slides.map((slide, idx) => (
           <div
             key={idx}
             ref={idx === recordingCurrentLine && isRecording ? activeSlideRef : null}
             className={cn(
-              "p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 group",
+              "p-2 rounded-lg border transition-all flex items-center justify-between gap-2 group",
               idx === recordingCurrentLine && isRecording 
                 ? "bg-red-50 border-red-200 ring-2 ring-red-500/20" 
                 : "bg-white border-slate-100 hover:border-brand-primary/20"
             )}
           >
-            <div className="flex items-center gap-4 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <div className={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0",
+                "w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0",
                 slide.isTitle ? "bg-brand-primary/10 text-brand-primary" : "bg-slate-50 text-slate-400"
               )}>
                 {slide.isTitle ? 'T' : idx}
               </div>
               <p className={cn(
-                "text-sm truncate font-medium",
+                "text-[10px] truncate font-medium",
                 slide.isTitle ? "text-brand-primary font-bold" : "text-slate-600 italic"
               )}>
                 {slide.text || (slide.isTitle ? 'Título' : '(Slide Vazio Final)')}
@@ -422,19 +415,19 @@ const TimingEditor = memo(({
             <button
               type="button"
               onClick={() => onEditTiming(slide, idx)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:bg-brand-primary/5 hover:border-brand-primary/20 transition-all group/btn"
+              className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 rounded border border-slate-100 hover:bg-brand-primary/5 hover:border-brand-primary/20 transition-all group/btn"
             >
-              <Clock className="w-3 h-3 text-slate-400 group-hover/btn:text-brand-primary" />
-              <span className="text-xs font-bold text-brand-primary">{slide.timing}s</span>
+              <Clock className="w-2 h-2 text-slate-400 group-hover/btn:text-brand-primary" />
+              <span className="text-[9px] font-bold text-brand-primary">{slide.timing}s</span>
             </button>
           </div>
         ))}
       </div>
       
       {isAutoSaving && (
-        <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-brand-primary uppercase tracking-widest animate-pulse">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Salvando alterações...
+        <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-brand-primary uppercase tracking-widest animate-pulse">
+          <Loader2 className="w-2 h-2 animate-spin" />
+          Salvando...
         </div>
       )}
     </div>
@@ -1040,142 +1033,204 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       </div>
 
       {adminMode === 'add' ? (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Coleção */}
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Coleção</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {collections.map((col) => {
-                const Icon = ICON_MAP[col.icon] || Music;
-                return (
-                  <button
-                    key={col.id}
-                    type="button"
-                    onClick={() => setSelectedCollectionId(col.id)}
-                    className={cn(
-                      "p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all",
-                      selectedCollectionId === col.id 
-                        ? "bg-brand-primary/5 border-brand-primary text-brand-primary shadow-sm" 
-                        : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
-                    )}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{col.name}</span>
-                  </button>
-                );
-              })}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Coluna da Esquerda: Detalhes (Imagem 2) */}
+          <div className="lg:col-span-3 space-y-3">
+            {/* Coleção */}
+            <div className="space-y-1">
+              <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest ml-1.5">Coleção</label>
+              <div className="grid grid-cols-3 gap-1">
+                {collections.map((col) => {
+                  const Icon = ICON_MAP[col.icon] || Music;
+                  return (
+                    <button
+                      key={col.id}
+                      type="button"
+                      onClick={() => setSelectedCollectionId(col.id)}
+                      className={cn(
+                        "p-1.5 rounded-lg border flex flex-col items-center gap-0.5 transition-all",
+                        selectedCollectionId === col.id 
+                          ? "bg-brand-primary/5 border-brand-primary text-brand-primary shadow-sm" 
+                          : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span className="text-[7px] font-bold uppercase tracking-wider text-center leading-tight">{col.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Categoria Doxologia */}
+            {selectedCollectionId === 'doxologia' && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Categoria de Doxologia</label>
+                <select
+                  value={doxologiaCategory}
+                  onChange={(e) => setDoxologiaCategory(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all font-bold text-slate-700 text-xs"
+                >
+                  <option value="">Selecione uma categoria...</option>
+                  {DOXOLOGIA_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Informações Básicas */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Nº</label>
+                <div className="relative">
+                  <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="number"
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value)}
+                    placeholder="01"
+                    className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                  />
+                </div>
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Título</label>
+                <div className="relative">
+                  <Type className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Título da música"
+                    className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Álbum e Ano */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Álbum / Cantor</label>
+                <div className="relative">
+                  <Disc className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={albumName}
+                    onChange={(e) => setAlbumName(e.target.value)}
+                    placeholder="Cantor"
+                    className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Ano</label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    placeholder="2024"
+                    className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Áudio e Capa */}
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Áudio</label>
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <LinkIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="url"
+                      value={audioUrl}
+                      onChange={(e) => setAudioUrl(e.target.value)}
+                      placeholder="URL .mp3"
+                      className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                    />
+                  </div>
+                  <label className="flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-slate-200 rounded-xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
+                    <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-primary" />
+                    <span className="text-[9px] font-bold text-slate-500 group-hover:text-brand-primary truncate">
+                      {audioFile ? audioFile.name : 'Arquivo local'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Capa</label>
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <LinkIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="url"
+                      value={coverUrl}
+                      onChange={(e) => setCoverUrl(e.target.value)}
+                      placeholder="URL Imagem"
+                      className="w-full pl-8 pr-2 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all text-xs"
+                    />
+                  </div>
+                  <label className="flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-slate-200 rounded-xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
+                    <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-primary" />
+                    <span className="text-[9px] font-bold text-slate-500 group-hover:text-brand-primary truncate">
+                      {coverFile ? coverFile.name : 'Imagem local'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Categoria Doxologia */}
-          {selectedCollectionId === 'doxologia' && (
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Categoria de Doxologia</label>
-              <select
-                value={doxologiaCategory}
-                onChange={(e) => setDoxologiaCategory(e.target.value)}
-                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all font-bold text-slate-700"
-              >
-                <option value="">Selecione uma categoria...</option>
-                {DOXOLOGIA_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Informações Básicas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Número (Opcional)</label>
-              <div className="relative">
-                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="number"
-                  value={number}
-                  onChange={(e) => setNumber(e.target.value)}
-                  placeholder="Ex: 01"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Título da Música</label>
-              <div className="relative">
-                <Type className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Ex: Grandioso és Tu"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Álbum e Ano */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Álbum / Cantor</label>
-              <div className="relative">
-                <Disc className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  value={albumName}
-                  onChange={(e) => setAlbumName(e.target.value)}
-                  placeholder="Ex: Hinário Adventista"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Ano</label>
-              <div className="relative">
-                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  placeholder="Ex: 2024"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Letra e Sincronização */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between ml-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Letra do Hino</label>
-              <div className="flex items-center gap-2">
+          {/* Coluna da Direita: Letra e Sincronização (Imagem 3) */}
+          <div className="lg:col-span-9 space-y-1.5">
+            <div className="flex items-center justify-between ml-1">
+              <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Letra e Sincronização</label>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={handleAISync}
                   disabled={isSyncingAI || !lyrics || !title}
                   className={cn(
-                    "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
+                    "text-[7px] font-bold uppercase tracking-widest flex items-center gap-1 px-2 py-0.5 rounded-full transition-all",
                     "bg-amber-100 text-amber-600 hover:bg-amber-200 disabled:opacity-50"
                   )}
                 >
                   {isSyncingAI ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Loader2 className="w-2 h-2 animate-spin" />
                   ) : (
-                    <Sparkles className="w-3 h-3" />
+                    <Sparkles className="w-2 h-2" />
                   )}
-                  {isSyncingAI ? 'Sincronizando...' : 'Sincronizar com IA'}
+                  {isSyncingAI ? 'Sincronizando...' : 'IA Sync'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowTimingEditor(!showTimingEditor)}
                   className={cn(
-                    "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full transition-all",
+                    "text-[7px] font-bold uppercase tracking-widest flex items-center gap-1 px-2 py-0.5 rounded-full transition-all",
                     showTimingEditor ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                   )}
                 >
-                  <Clock className="w-3 h-3" />
-                  {showTimingEditor ? 'Fechar Editor de Tempos' : 'Abrir Editor de Tempos'}
+                  <Clock className="w-2 h-2" />
+                  {showTimingEditor ? 'Fechar' : 'Editor'}
                 </button>
               </div>
             </div>
@@ -1193,105 +1248,46 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
               />
             ) : (
               <div className="relative">
-                <FileText className="absolute left-4 top-4 w-5 h-5 text-slate-400" />
+                <FileText className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-400" />
                 <textarea
                   required
                   value={lyrics}
                   onChange={(e) => setLyrics(e.target.value)}
                   placeholder="Cole a letra aqui...&#10;Use [T:5] para o tempo do título.&#10;Use [5] no início da linha para o tempo do slide."
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-3xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all min-h-[300px] font-serif italic text-lg leading-relaxed"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all min-h-[400px] lg:min-h-[500px] font-serif italic text-sm leading-relaxed"
                 />
               </div>
             )}
+
+            {/* Botão de Envio */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={cn(
+                "w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95",
+                success 
+                  ? "bg-green-500 shadow-green-500/20" 
+                  : "bg-brand-primary shadow-brand-primary/20 hover:scale-[1.01]"
+              )}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Salvando Música...</span>
+                </>
+              ) : success ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="text-sm">Música Salva com Sucesso!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span className="text-sm">{editingSongId ? 'Atualizar Música' : 'Salvar Música'}</span>
+                </>
+              )}
+            </button>
           </div>
-
-          {/* Áudio e Capa */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Áudio (Arquivo ou URL)</label>
-              <div className="space-y-3">
-                <div className="relative">
-                  <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="url"
-                    value={audioUrl}
-                    onChange={(e) => setAudioUrl(e.target.value)}
-                    placeholder="URL do arquivo .mp3"
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                  />
-                </div>
-                <label className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
-                  <Upload className="w-5 h-5 text-slate-400 group-hover:text-brand-primary" />
-                  <span className="text-xs font-bold text-slate-500 group-hover:text-brand-primary">
-                    {audioFile ? audioFile.name : 'Ou selecione um arquivo local'}
-                  </span>
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Capa (Arquivo ou URL)</label>
-              <div className="space-y-3">
-                <div className="relative">
-                  <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="url"
-                    value={coverUrl}
-                    onChange={(e) => setCoverUrl(e.target.value)}
-                    placeholder="URL da imagem da capa"
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                  />
-                </div>
-                <label className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all cursor-pointer group">
-                  <Upload className="w-5 h-5 text-slate-400 group-hover:text-brand-primary" />
-                  <span className="text-xs font-bold text-slate-500 group-hover:text-brand-primary">
-                    {coverFile ? coverFile.name : 'Ou selecione uma imagem local'}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Botão de Envio */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className={cn(
-              "w-full py-5 rounded-2xl font-bold text-white shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95",
-              success 
-                ? "bg-green-500 shadow-green-500/20" 
-                : "bg-brand-primary shadow-brand-primary/20 hover:scale-[1.01]"
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />
-                <span>Salvando Música...</span>
-              </>
-            ) : success ? (
-              <>
-                <CheckCircle2 className="w-6 h-6" />
-                <span>Música Salva com Sucesso!</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-6 h-6" />
-                <span>{editingSongId ? 'Atualizar Música' : 'Salvar Música'}</span>
-              </>
-            )}
-          </button>
         </form>
       ) : (
         <SongList 

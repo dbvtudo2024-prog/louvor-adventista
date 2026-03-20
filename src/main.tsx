@@ -3,32 +3,28 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('SW registered: ', registration);
-      
-      // Check for updates periodically
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New version available, reload the page
-              window.location.reload();
-            }
-          });
-        }
-      });
-    }).catch(registrationError => {
-      console.log('SW registration failed: ', registrationError);
-    });
-  });
-}
+// The service worker is handled by vite-plugin-pwa automatically.
+// We can remove the manual registration to avoid conflicts.
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const rootElement = document.getElementById('root');
+console.log('Main.tsx: Root element found:', !!rootElement);
+
+if (rootElement) {
+  try {
+    console.log('Main.tsx: Starting render...');
+    createRoot(rootElement).render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    console.log('Main.tsx: Render called successfully');
+  } catch (error) {
+    console.error('Erro ao renderizar App:', error);
+    if (typeof (window as any).onerror === 'function') {
+      (window as any).onerror('Erro ao renderizar App: ' + (error as any).message, 'main.tsx', 0, 0, error);
+    }
+  }
+} else {
+  console.error('Root element not found');
+}
 

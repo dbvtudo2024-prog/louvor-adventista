@@ -1,5 +1,5 @@
 // Louvor Adventista - v1.0.1
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RemoteReceiverView } from './components/RemoteReceiverView';
 import { io, Socket } from 'socket.io-client';
@@ -42,6 +42,49 @@ import { AdminView } from './components/AdminView';
 import { ProjectionView } from './components/ProjectionView';
 import { ProjectedOnlyView } from './components/ProjectedOnlyView';
 
+// Error Boundary Component
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm p-8 text-center">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <AlertTriangle className="w-10 h-10 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-serif font-bold text-brand-primary mb-4">Algo deu errado</h2>
+          <p className="text-slate-600 mb-8 leading-relaxed">
+            Ocorreu um erro inesperado no aplicativo. Por favor, tente recarregar a página.
+          </p>
+          <pre className="text-xs bg-black/5 p-4 rounded-xl mb-8 max-w-full overflow-auto text-left">
+            {this.state.error?.message || 'Erro desconhecido'}
+          </pre>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-8 py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20"
+          >
+            Recarregar Aplicativo
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const ICON_MAP: Record<string, any> = {
   church: Church,
   music: Music,
@@ -58,6 +101,14 @@ const formatTime = (seconds: number) => {
 };
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin'>('home');
   const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
   const [songs, setSongs] = useState<Song[]>(MOCK_SONGS);
@@ -185,19 +236,31 @@ export default function App() {
 
   // Load settings from localStorage
   useEffect(() => {
-    const savedFontSize = localStorage.getItem('fontSize') as any;
-    const savedFontFamily = localStorage.getItem('fontFamily') as any;
-    if (savedFontSize) setFontSize(savedFontSize);
-    if (savedFontFamily) setFontFamily(savedFontFamily);
+    try {
+      const savedFontSize = localStorage.getItem('fontSize') as any;
+      const savedFontFamily = localStorage.getItem('fontFamily') as any;
+      if (savedFontSize) setFontSize(savedFontSize);
+      if (savedFontFamily) setFontFamily(savedFontFamily);
+    } catch (e) {
+      console.warn('LocalStorage not available:', e);
+    }
   }, []);
 
   // Save settings to localStorage
   useEffect(() => {
-    localStorage.setItem('fontSize', fontSize);
+    try {
+      localStorage.setItem('fontSize', fontSize);
+    } catch (e) {
+      console.warn('LocalStorage not available:', e);
+    }
   }, [fontSize]);
 
   useEffect(() => {
-    localStorage.setItem('fontFamily', fontFamily);
+    try {
+      localStorage.setItem('fontFamily', fontFamily);
+    } catch (e) {
+      console.warn('LocalStorage not available:', e);
+    }
   }, [fontFamily]);
 
   const handleInstallClick = async () => {
