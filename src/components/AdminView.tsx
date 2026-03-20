@@ -37,7 +37,7 @@ import {
 import { cn } from '../lib/utils';
 import { getSupabase } from '../lib/supabase';
 import { Collection, Song } from '../types';
-import { generateLyricsTimings } from '../services/aiService';
+import { generateLyricsTimings, isAIConfigured } from '../services/aiService';
 
 const ICON_MAP: Record<string, any> = {
   church: Church,
@@ -477,6 +477,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSyncingAI, setIsSyncingAI] = useState(false);
+  const [showAIKeyHelp, setShowAIKeyHelp] = useState(false);
   const [editingSlideTiming, setEditingSlideTiming] = useState<{ slide: any, index: number } | null>(null);
   const [tempTiming, setTempTiming] = useState<string>('');
   const lyricsRef = useRef(lyrics);
@@ -499,13 +500,20 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       alert("Por favor, preencha o título e a letra antes de sincronizar.");
       return;
     }
+
+    if (!isAIConfigured()) {
+      setShowAIKeyHelp(true);
+      return;
+    }
     
     setIsSyncingAI(true);
     try {
       const syncedLyrics = await generateLyricsTimings(title, lyrics);
       setLyrics(syncedLyrics);
-    } catch (error) {
-      alert("Erro ao sincronizar com IA. Tente novamente.");
+    } catch (error: any) {
+      console.error("AI Sync Error:", error);
+      const errorMessage = error.message || "Erro desconhecido";
+      alert(`Erro ao sincronizar com IA: ${errorMessage}\n\nVerifique se a chave de API está configurada corretamente.`);
     } finally {
       setIsSyncingAI(false);
     }
@@ -1330,6 +1338,79 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
             onClose={() => setEditingSlideTiming(null)}
             onSave={handleSaveTiming}
           />
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Modal de Ajuda da Chave de API */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence mode="wait">
+          {showAIKeyHelp && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-emerald-500" />
+                
+                <button 
+                  onClick={() => setShowAIKeyHelp(false)}
+                  className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-2xl bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-serif font-bold text-brand-primary">Sincronização com IA</h3>
+                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Configuração Necessária</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 mb-8">
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <p className="text-[11px] text-emerald-800 leading-relaxed">
+                      Este recurso usa a inteligência artificial do Google para estimar os tempos das letras automaticamente. 
+                      <strong> É totalmente gratuito</strong>, mas requer uma chave de acesso.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">1</div>
+                      <p className="text-[11px] text-slate-600">
+                        Acesse o <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-brand-primary font-bold underline">Google AI Studio</a> (grátis).
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">2</div>
+                      <p className="text-[11px] text-slate-600">
+                        Clique em <strong>"Create API key"</strong> e copie o código gerado.
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">3</div>
+                      <p className="text-[11px] text-slate-600">
+                        No seu painel do <strong>Vercel</strong>, adicione uma variável de ambiente chamada <code>GEMINI_API_KEY</code> com esse código.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowAIKeyHelp(false)}
+                  className="w-full py-3 bg-brand-primary text-white rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-brand-primary/90 transition-all shadow-lg shadow-brand-primary/20 active:scale-95"
+                >
+                  Entendi, vou configurar
+                </button>
+              </motion.div>
+            </div>
+          )}
         </AnimatePresence>,
         document.body
       )}
