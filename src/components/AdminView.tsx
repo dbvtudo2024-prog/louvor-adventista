@@ -28,6 +28,7 @@ import {
   Mic,
   RotateCcw,
   Undo2,
+  Download,
   PlayCircle,
   PauseCircle,
   Sparkles,
@@ -256,7 +257,7 @@ const RecordingModal = memo(({
         </div>
 
         <p className="text-[10px] text-slate-400 text-center italic">
-          Dica: Clique no botão azul exatamente quando a frase terminar no áudio.
+          Dica: Clique no botão azul ou pressione <strong>ESPAÇO</strong> exatamente quando a frase terminar no áudio.
         </p>
       </motion.div>
     </div>
@@ -444,6 +445,13 @@ interface AdminViewProps {
 export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   const [adminMode, setAdminMode] = useState<'add' | 'manage'>('add');
   const [selectedCollectionId, setSelectedCollectionId] = useState(collections[0]?.id || '');
+  
+  useEffect(() => {
+    if (!selectedCollectionId && collections.length > 0) {
+      setSelectedCollectionId(collections[0].id);
+    }
+  }, [collections, selectedCollectionId]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   
@@ -597,27 +605,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
   useEffect(() => {
     if (adminMode === 'manage') {
-      fetchSongs();
+      fetchSongs().catch(err => console.error('Error fetching songs:', err));
     }
   }, [adminMode]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showTimingEditor) {
-          setShowTimingEditor(false);
-          return;
-        }
-        if (editingSongId) {
-          setEditingSongId(null);
-          return;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTimingEditor, editingSongId]);
 
   const resetRecording = useCallback(() => {
     if (window.confirm('Deseja apagar toda a gravação atual?')) {
@@ -694,6 +684,29 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setRecordingCurrentLine(prev => Math.max(0, prev - 1));
   }, [recordedTimings, recordingAudio]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showTimingEditor) {
+          setShowTimingEditor(false);
+          return;
+        }
+        if (editingSongId) {
+          setEditingSongId(null);
+          return;
+        }
+      }
+
+      if (isRecording && e.key === ' ') {
+        e.preventDefault();
+        markTiming();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showTimingEditor, editingSongId, isRecording, markTiming]);
+
   const applyRecordedTimings = (timings: number[], forceSave = false) => {
     const currentLyrics = lyricsRef.current;
     // timings array contains durations for title, then line 1, line 2, etc.
@@ -760,9 +773,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       };
 
       if (forceSave) {
-        saveToDb();
+        saveToDb().catch(err => console.error('Error in auto-save:', err));
       } else {
-        saveTimeoutRef.current = setTimeout(saveToDb, 1500); // 1.5s debounce
+        saveTimeoutRef.current = setTimeout(() => {
+          saveToDb().catch(err => console.error('Error in auto-save (debounced):', err));
+        }, 1500); // 1.5s debounce
       }
     }
   };
@@ -885,7 +900,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setYear(song.year?.toString() || '');
     
     // Check if it's doxologia and set category
-    if (song.collection_id === 'doxologia') {
+    if (song.collection_id === '12345678-90ab-4def-b234-567890abcdef') {
       setDoxologiaCategory(song.album_name || '');
     }
 
@@ -958,7 +973,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         lyrics,
         audio_url: finalAudioUrl || null,
         cover_url: finalCoverUrl || null,
-        album_name: selectedCollectionId === 'doxologia' ? doxologiaCategory : (albumName || null),
+        album_name: selectedCollectionId === '12345678-90ab-4def-b234-567890abcdef' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
         user_id: user.id
       };
@@ -995,7 +1010,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       
       // Refresh songs list if in manage mode
       if (adminMode === 'manage') {
-        fetchSongs();
+        fetchSongs().catch(err => console.error('Error refreshing songs:', err));
       }
       
       setTimeout(() => setSuccess(false), 3000);
@@ -1015,6 +1030,25 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     song.album_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleLyricsChange = (value: string) => {
+    // Tenta converter formatos comuns (ex: LouvorJA [00:05.50] -> [5.5])
+    let cleaned = value;
+    
+    // Converte [00:05.50] ou [05.50] para [5.5]
+    cleaned = cleaned.replace(/\[(\d{2}):(\d{2})\.(\d{2})\]/g, (_, min, sec, ms) => {
+      const totalSec = parseInt(min) * 60 + parseInt(sec) + parseInt(ms) / 100;
+      return `[${totalSec.toFixed(1)}]`;
+    });
+
+    // Converte [T:00:05.50] para [T:5.5]
+    cleaned = cleaned.replace(/\[T:(\d{2}):(\d{2})\.(\d{2})\]/g, (_, min, sec, ms) => {
+      const totalSec = parseInt(min) * 60 + parseInt(sec) + parseInt(ms) / 100;
+      return `[T:${totalSec.toFixed(1)}]`;
+    });
+
+    setLyrics(cleaned);
+  };
 
   return (
     <>
@@ -1082,7 +1116,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
             </div>
 
             {/* Categoria Doxologia */}
-            {selectedCollectionId === 'doxologia' && (
+            {selectedCollectionId === '12345678-90ab-4def-b234-567890abcdef' && (
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-2">Categoria de Doxologia</label>
                 <select
@@ -1242,6 +1276,17 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    const url = prompt("Cole o link da música do LouvorJA (opcional) ou apenas clique em OK para ver como importar:");
+                    alert("Para importar do LouvorJA:\n1. Abra a música no app.louvorja.com.br\n2. Copie o texto da letra\n3. Cole aqui no campo de letra\n4. Use o botão 'Gravar' no Editor de Sincronização para marcar os tempos manualmente (é o método mais preciso!)");
+                  }}
+                  className="text-[7px] font-bold uppercase tracking-widest flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-all"
+                >
+                  <Download className="w-2 h-2" />
+                  Importar
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowTimingEditor(!showTimingEditor)}
                   className={cn(
                     "text-[7px] font-bold uppercase tracking-widest flex items-center gap-1 px-2 py-0.5 rounded-full transition-all",
@@ -1271,7 +1316,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                 <textarea
                   required
                   value={lyrics}
-                  onChange={(e) => setLyrics(e.target.value)}
+                  onChange={(e) => handleLyricsChange(e.target.value)}
                   placeholder="Cole a letra aqui...&#10;Use [T:5] para o tempo do título.&#10;Use [5] no início da linha para o tempo do slide."
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all min-h-[400px] lg:min-h-[500px] font-serif italic text-sm leading-relaxed"
                 />

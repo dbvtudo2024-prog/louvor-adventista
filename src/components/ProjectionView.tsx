@@ -92,11 +92,11 @@ export function ProjectionView({
       }
     };
 
-    requestWakeLock();
+    requestWakeLock().catch(err => console.error('Error requesting wake lock:', err));
 
     const handleVisibilityChange = () => {
       if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
-        requestWakeLock();
+        requestWakeLock().catch(err => console.error('Error requesting wake lock on visibility change:', err));
       }
     };
 

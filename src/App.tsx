@@ -487,7 +487,7 @@ function AppContent() {
   }, [selectedSong]);
 
   useEffect(() => {
-    fetchData();
+    fetchData().catch(err => console.error('Error in initial fetchData:', err));
   }, []);
 
   useEffect(() => {
@@ -625,7 +625,7 @@ function AppContent() {
     if (!selectedCollection) return [];
     const name = selectedCollection.name.toLowerCase();
     const id = selectedCollection.id.toLowerCase();
-    const isAlbumCollection = id === 'ja' || name.includes('jovens') || name.includes('ja') || id === 'coletaneas' || name.includes('coletânea') || id === 'doxologia' || name.includes('doxologia');
+    const isAlbumCollection = id === 'a1b2c3d4-e5f6-4890-b234-567890abcdef' || name.includes('jovens') || name.includes('ja') || id === '98765432-10fe-4cba-b876-543210fedcba' || name.includes('coletânea') || id === '12345678-90ab-4def-b234-567890abcdef' || name.includes('doxologia');
     
     if (!isAlbumCollection) return [];
 

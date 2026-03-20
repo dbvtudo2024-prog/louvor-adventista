@@ -78,7 +78,7 @@ export function RemoteReceiverView({ roomId }: RemoteReceiverViewProps) {
         }
       }
     };
-    requestWakeLock();
+    requestWakeLock().catch(err => console.error('Error requesting wake lock:', err));
 
     return () => {
       socket.disconnect();

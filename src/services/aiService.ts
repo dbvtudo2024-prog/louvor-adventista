@@ -68,27 +68,28 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       Sua tarefa é analisar a letra da música "${title}" e definir a DURAÇÃO (em segundos) que cada slide deve permanecer na tela.
       
       Regras CRÍTICAS de Sincronização:
-      1. O formato deve ser:
+      1. O formato deve ser EXATAMENTE:
          [T:tempo_introducao] Título
          [duracao_slide1] Texto do Slide 1
          [duracao_slide2] Texto do Slide 2
       2. O valor entre colchetes é a DURAÇÃO (quanto tempo o slide fica visível), NÃO o tempo de início.
-      3. Estime a introdução instrumental [T:...] (geralmente entre 5 a 15 segundos).
-      4. Estime durações realistas para cada frase (geralmente entre 4 a 8 segundos).
-      5. Adicione 1 ou 2 segundos extras na última linha de cada estrofe para a transição musical.
-      6. Retorne APENAS o texto formatado, sem comentários ou explicações.
-      7. Use PONTO como separador decimal (ex: 5.5).
+      3. Estime a introdução instrumental [T:...] (geralmente entre 8 a 12 segundos para hinos tradicionais).
+      4. Calcule durações realistas baseadas no número de sílabas e palavras (média de 0.4s por sílaba).
+      5. Slides com mais texto devem ter durações maiores (ex: 6-9 segundos). Slides curtos (ex: 3-5 segundos).
+      6. Adicione 1.5 a 2.5 segundos extras na última linha de cada estrofe para a transição musical/pausa.
+      7. Retorne APENAS o texto formatado, sem comentários, explicações ou blocos de código markdown.
+      8. Use PONTO como separador decimal (ex: 5.5).
       
       Exemplo de retorno esperado:
-      [T:8] Título do Hino
-      [5.5] Primeira frase da música
-      [6.0] Segunda frase da música
-      [7.5] Última frase da estrofe (com pausa)
+      [T:10.0] Título do Hino
+      [5.2] Primeira frase da música que é curta
+      [7.8] Segunda frase da música que é um pouco mais longa e complexa
+      [8.5] Última frase da estrofe com uma pausa instrumental no final
       
       Letra para processar:
       ${cleanLyrics}`,
       config: {
-        temperature: 0.1,
+        temperature: 0.2,
         maxOutputTokens: 2048,
       },
     });

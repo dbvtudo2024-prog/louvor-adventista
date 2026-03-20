@@ -1,17 +1,17 @@
 import { Collection, Song } from './types';
 
 export const MOCK_COLLECTIONS: Collection[] = [
-  { id: 'hinario', name: 'Hinário Adventista', icon: 'church', description: 'Hinos tradicionais da IASD' },
-  { id: 'ja', name: 'CDs Jovens', icon: 'music', description: 'Músicas de Jovens Adventistas' },
-  { id: 'coletaneas', name: 'Coletâneas Diversas', icon: 'library', description: 'Grupos e solistas' },
-  { id: 'doxologia', name: 'Doxologia', icon: 'scroll', description: 'Cânticos de adoração' },
-  { id: 'infantil', name: 'Músicas Infantis', icon: 'baby', description: 'Para os pequenos' },
+  { id: 'f0e1d2c3-b4a5-4876-b432-10fedcba9876', name: 'Hinário Adventista', icon: 'church', description: 'Hinos tradicionais da IASD' },
+  { id: 'a1b2c3d4-e5f6-4890-b234-567890abcdef', name: 'CDs Jovens', icon: 'music', description: 'Músicas de Jovens Adventistas' },
+  { id: '98765432-10fe-4cba-b876-543210fedcba', name: 'Coletâneas Diversas', icon: 'library', description: 'Grupos e solistas' },
+  { id: '12345678-90ab-4def-b234-567890abcdef', name: 'Doxologia', icon: 'scroll', description: 'Cânticos de adoração' },
+  { id: 'abcdef01-2345-4789-abcd-ef0123456789', name: 'Músicas Infantis', icon: 'baby', description: 'Para os pequenos' },
 ];
 
 export const MOCK_SONGS: Song[] = [
   {
     id: '1',
-    collection_id: 'hinario',
+    collection_id: 'f0e1d2c3-b4a5-4876-b432-10fedcba9876',
     number: 1,
     title: 'Ó Deus de Amor',
     lyrics: `Ó Deus de amor, nós Te adoramos,
@@ -28,7 +28,7 @@ Cantem os filhos Seus.`,
   },
   {
     id: '2',
-    collection_id: 'ja',
+    collection_id: 'a1b2c3d4-e5f6-4890-b234-567890abcdef',
     title: 'Brilhar por Ti',
     lyrics: `Às vezes parece que o sol não vai brilhar
 E a escuridão quer me desanimar
@@ -38,7 +38,7 @@ Mas eu sei que Tu estás comigo
   },
   {
     id: '3',
-    collection_id: 'coletaneas',
+    collection_id: '98765432-10fe-4cba-b876-543210fedcba',
     title: 'Vaso de Alabastro',
     lyrics: `Vim para adorar-Te, vim para dizer
 Que Tu és o meu Deus, o meu Salvador
@@ -48,7 +48,7 @@ Minha vida entrego em Teu altar, Senhor.`,
   },
   {
     id: '4',
-    collection_id: 'doxologia',
+    collection_id: '12345678-90ab-4def-b234-567890abcdef',
     title: 'A Deus Supremo Benfeitor',
     lyrics: `A Deus, supremo Benfeitor,
 Vós, anjos e homens, dai louvor;
