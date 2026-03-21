@@ -930,8 +930,35 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
     setIsSubmitting(true);
     setSuccess(false);
+    setError(null);
 
     try {
+      if (!title || !lyrics || !finalCollectionId) {
+        throw new Error('Por favor, preencha o título, a letra e a coleção.');
+      }
+
+      // Check if collection exists in DB, if not, create it (for MOCKs)
+      const { data: existingCol } = await supabase
+        .from('collections')
+        .select('id')
+        .eq('id', finalCollectionId)
+        .single();
+
+      if (!existingCol) {
+        const mockCol = collections.find(c => c.id === selectedCollectionId);
+        if (mockCol) {
+          const { error: colError } = await supabase
+            .from('collections')
+            .insert([{
+              id: finalCollectionId,
+              name: mockCol.name,
+              icon: mockCol.icon,
+              description: mockCol.description
+            }]);
+          if (colError) throw colError;
+        }
+      }
+
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
       if (!user) {
