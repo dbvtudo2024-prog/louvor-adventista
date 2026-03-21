@@ -100,6 +100,14 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+const ID_MAPPING: Record<string, string> = {
+  'hinario': 'f0e1d2c3-b4a5-4876-b432-10fedcba9876',
+  'ja': 'a1b2c3d4-e5f6-4890-b234-567890abcdef',
+  'coletaneas': '98765432-10fe-4cba-b876-543210fedcba',
+  'doxologia': '12345678-90ab-4def-b234-567890abcdef',
+  'infantil': 'abcdef01-2345-4789-abcd-ef0123456789'
+};
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -420,7 +428,9 @@ function AppContent() {
       // 1. Add DB collections first (they are the source of truth)
       if (cols && cols.length > 0) {
         cols.forEach(col => {
-          collectionsMap.set(col.id, col);
+          // Map old string IDs to UUIDs if necessary
+          const mappedId = ID_MAPPING[col.id] || col.id;
+          collectionsMap.set(mappedId, { ...col, id: mappedId });
         });
       }
       
@@ -467,7 +477,9 @@ function AppContent() {
         // Ensure unique songs by ID
         const songsMap = new Map<string, Song>();
         sngs.forEach(song => {
-          songsMap.set(song.id, song);
+          // Map old string IDs to UUIDs if necessary
+          const mappedCollectionId = ID_MAPPING[song.collection_id] || song.collection_id;
+          songsMap.set(song.id, { ...song, collection_id: mappedCollectionId });
         });
         const uniqueSongs = Array.from(songsMap.values());
         setSongs(uniqueSongs);

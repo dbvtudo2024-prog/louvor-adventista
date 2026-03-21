@@ -912,10 +912,21 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setTempTiming(slide.timing);
   }, []);
 
+  const ID_MAPPING: Record<string, string> = {
+    'hinario': 'f0e1d2c3-b4a5-4876-b432-10fedcba9876',
+    'ja': 'a1b2c3d4-e5f6-4890-b234-567890abcdef',
+    'coletaneas': '98765432-10fe-4cba-b876-543210fedcba',
+    'doxologia': '12345678-90ab-4def-b234-567890abcdef',
+    'infantil': 'abcdef01-2345-4789-abcd-ef0123456789'
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = getSupabase();
     if (!supabase) return;
+
+    // Convert old string IDs to UUIDs if necessary
+    const finalCollectionId = ID_MAPPING[selectedCollectionId] || selectedCollectionId;
 
     setIsSubmitting(true);
     setSuccess(false);
@@ -967,13 +978,13 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       }
 
       const songData: any = {
-        collection_id: selectedCollectionId,
+        collection_id: finalCollectionId,
         number: number ? parseInt(number) : null,
         title,
         lyrics,
         audio_url: finalAudioUrl || null,
         cover_url: finalCoverUrl || null,
-        album_name: selectedCollectionId === '12345678-90ab-4def-b234-567890abcdef' ? doxologiaCategory : (albumName || null),
+        album_name: finalCollectionId === '12345678-90ab-4def-b234-567890abcdef' ? doxologiaCategory : (albumName || null),
         year: year ? parseInt(year) : null,
         user_id: user.id
       };
