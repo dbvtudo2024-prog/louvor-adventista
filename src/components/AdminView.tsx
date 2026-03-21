@@ -454,6 +454,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Management state
   const [songs, setSongs] = useState<Song[]>([]);
@@ -932,11 +933,14 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     setSuccess(false);
     setError(null);
 
+    console.log('Iniciando submissão da música...');
+
     try {
       if (!title || !lyrics || !finalCollectionId) {
         throw new Error('Por favor, preencha o título, a letra e a coleção.');
       }
 
+      console.log('Verificando coleção...');
       // Check if collection exists in DB, if not, create it (for MOCKs)
       const { data: existingCol } = await supabase
         .from('collections')
@@ -945,6 +949,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         .single();
 
       if (!existingCol) {
+        console.log('Coleção não existe, criando...');
         const mockCol = collections.find(c => c.id === selectedCollectionId);
         if (mockCol) {
           const { error: colError } = await supabase
@@ -959,9 +964,12 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         }
       }
 
+      console.log('Obtendo usuário...');
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
+      console.log('Usuário obtido:', user?.email);
       if (!user) {
+        console.log('Usuário não encontrado!');
         alert('Você precisa estar logado para realizar esta ação.');
         setIsSubmitting(false);
         return;
@@ -972,11 +980,13 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
       // Upload Audio File if exists
       if (audioFile) {
+        console.log('Fazendo upload do áudio...');
         const fileExt = audioFile.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('audio')
           .upload(fileName, audioFile);
+        console.log('Upload de áudio concluído. Erro:', uploadError);
 
         if (uploadError) throw uploadError;
         
@@ -989,11 +999,13 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
 
       // Upload Cover File if exists
       if (coverFile) {
+        console.log('Fazendo upload da capa...');
         const fileExt = coverFile.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('images')
           .upload(fileName, coverFile);
+        console.log('Upload de capa concluído. Erro:', uploadError);
 
         if (uploadError) throw uploadError;
         
@@ -1016,7 +1028,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         user_id: user.id
       };
 
-      console.log('Enviando dados da música:', songData);
+      console.log('Enviando dados da música para o banco:', songData);
 
       if (editingSongId) {
         const { error } = await supabase
@@ -1031,8 +1043,11 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
         if (error) throw error;
       }
 
+      console.log('Música salva com sucesso!');
       setSuccess(true);
-      if (onSongUpdated) await onSongUpdated();
+      if (onSongUpdated) {
+        onSongUpdated().catch(err => console.error('Erro ao atualizar lista de músicas:', err));
+      }
       // Reset form
       setEditingSongId(null);
       setNumber('');
@@ -1052,14 +1067,20 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       }
       
       setTimeout(() => setSuccess(false), 3000);
-    } catch (error: any) {
-      console.error('Error adding/updating song:', error);
-      const errorMessage = error.message || 'Erro desconhecido';
-      const errorDetails = error.details || '';
-      const errorCode = error.code || '';
+    } catch (err: any) {
+      console.error('ERRO CRÍTICO no handleSubmit:', err);
+      const errorMessage = err.message || 'Erro desconhecido';
+      const errorDetails = err.details || '';
+      const errorCode = err.code || '';
       
-      alert(`Erro ao salvar música: ${errorMessage}\n${errorDetails}\n(Código: ${errorCode})\n\nIsso geralmente acontece por falta de permissões (RLS) no Supabase. Verifique se a tabela "songs" permite INSERT/UPDATE para usuários autenticados.`);
+      const fullMessage = `Erro ao salvar música: ${errorMessage} ${errorDetails} (Código: ${errorCode})`;
+      setError(fullMessage);
+      
+      if (errorCode === '42501') {
+        alert(`${fullMessage}\n\nIsso geralmente acontece por falta de permissões (RLS) no Supabase. Verifique se a tabela "songs" permite INSERT/UPDATE para usuários autenticados.`);
+      }
     } finally {
+      console.log('Finalizando submissão...');
       setIsSubmitting(false);
     }
   };
@@ -1358,6 +1379,14 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
                   placeholder="Cole a letra aqui...&#10;Use [T:5] para o tempo do título.&#10;Use [5] no início da linha para o tempo do slide."
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all min-h-[400px] lg:min-h-[500px] font-serif italic text-sm leading-relaxed"
                 />
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 animate-in fade-in slide-in-from-top-1">
+                <X className="w-4 h-4 shrink-0" onClick={() => setError(null)} />
+                <p className="text-[10px] font-bold uppercase tracking-tight leading-tight">{error}</p>
               </div>
             )}
 

@@ -55,7 +55,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         console.error(`Error attempting to enable full-screen mode: ${err.message}`);
       });
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().catch(() => {});
     }
   };
 

@@ -103,6 +103,7 @@ const formatTime = (seconds: number) => {
 const ID_MAPPING: Record<string, string> = {
   'hinario': 'f0e1d2c3-b4a5-4876-b432-10fedcba9876',
   'ja': 'a1b2c3d4-e5f6-4890-b234-567890abcdef',
+  'coletaneas': '98765432-10fe-4cba-b876-543210fedcba',
   'doxologia': '12345678-90ab-4def-b234-567890abcdef',
   'infantil': 'abcdef01-2345-4789-abcd-ef0123456789'
 };
@@ -665,7 +666,9 @@ function AppContent() {
   const copyRemoteUrl = () => {
     if (!remoteRoomId) return;
     const url = `${window.location.origin}${window.location.pathname}?tv=${remoteRoomId}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url).catch(err => {
+      console.error('Erro ao copiar URL:', err);
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1242,7 +1245,7 @@ function AppContent() {
             </motion.div>
           )}
 
-          {view === 'admin' && user?.email === 'ronaldosonic@gmail.com' && (
+          {view === 'admin' && (user?.email === 'ronaldosonic@gmail.com' || user?.email === 'mush157s12@gmail.com') && (
             <AdminView 
               key="admin-view"
               collections={collections} 
@@ -1348,7 +1351,7 @@ function AppContent() {
                         <Volume2 className="w-5 h-5" />
                         <span className="font-medium">Ajustes de Áudio</span>
                       </button>
-                      {user?.email === 'ronaldosonic@gmail.com' && (
+                      {(user?.email === 'ronaldosonic@gmail.com' || user?.email === 'mush157s12@gmail.com') && (
                         <button 
                           onClick={() => { setMenuView('main'); setIsMenuOpen(false); navigateTo('admin'); }}
                           className="flex items-center gap-4 w-full text-left text-slate-600 hover:text-brand-primary transition-colors p-2 rounded-lg hover:bg-slate-50"

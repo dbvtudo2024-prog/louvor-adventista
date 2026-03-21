@@ -316,7 +316,9 @@ export function ProjectionView({
   const copyRemoteUrl = () => {
     if (!remoteRoomId) return;
     const url = `${window.location.origin}${window.location.pathname}?tv=${remoteRoomId}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url).catch(err => {
+      console.error('Erro ao copiar URL:', err);
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
