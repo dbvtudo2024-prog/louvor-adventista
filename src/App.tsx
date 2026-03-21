@@ -103,7 +103,6 @@ const formatTime = (seconds: number) => {
 const ID_MAPPING: Record<string, string> = {
   'hinario': 'f0e1d2c3-b4a5-4876-b432-10fedcba9876',
   'ja': 'a1b2c3d4-e5f6-4890-b234-567890abcdef',
-  'coletaneas': '98765432-10fe-4cba-b876-543210fedcba',
   'doxologia': '12345678-90ab-4def-b234-567890abcdef',
   'infantil': 'abcdef01-2345-4789-abcd-ef0123456789'
 };
