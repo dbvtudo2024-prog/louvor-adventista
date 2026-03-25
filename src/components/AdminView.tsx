@@ -1046,7 +1046,10 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
       console.log('Música salva com sucesso!');
       setSuccess(true);
       if (onSongUpdated) {
-        onSongUpdated().catch(err => console.error('Erro ao atualizar lista de músicas:', err));
+        const result = onSongUpdated();
+        if (result instanceof Promise) {
+          result.catch(err => console.error('Erro ao atualizar lista de músicas:', err));
+        }
       }
       // Reset form
       setEditingSongId(null);

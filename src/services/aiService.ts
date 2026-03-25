@@ -79,6 +79,7 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       6. Adicione 1.5 a 2.5 segundos extras na última linha de cada estrofe para a transição musical/pausa.
       7. Retorne APENAS o texto formatado, sem comentários, explicações ou blocos de código markdown.
       8. Use PONTO como separador decimal (ex: 5.5).
+      9. IMPORTANTE: Você deve incluir TODAS as linhas da letra original. NÃO resuma, NÃO omita estrofes e NÃO pule nenhuma parte da música. A letra final deve ter exatamente o mesmo conteúdo textual da original, apenas acrescida dos tempos.
       
       Exemplo de retorno esperado:
       [T:10.0] Título do Hino
@@ -89,16 +90,19 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       Letra para processar:
       ${cleanLyrics}`,
       config: {
-        temperature: 0.2,
-        maxOutputTokens: 2048,
+        temperature: 0.1,
+        maxOutputTokens: 8192,
       },
     });
 
-    const resultText = response.text;
+    let resultText = response.text;
     if (!resultText) {
       console.warn("AI returned empty text, falling back to original lyrics.");
       return lyrics;
     }
+
+    // Clean markdown code blocks if AI included them
+    resultText = resultText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
 
     return resultText;
   } catch (error: any) {
