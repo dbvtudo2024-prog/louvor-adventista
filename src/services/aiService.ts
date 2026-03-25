@@ -53,10 +53,16 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
     const ai = getAI();
     
     // Clean lyrics for processing
-    const cleanLyrics = lyrics
+    let cleanLyrics = lyrics
       .replace(/\[T:\d+(?:[.,]\d+)?\]\n?/, '')
       .replace(/\[\d+(?:[.,]\d+)?\]\s*/g, '')
       .trim();
+
+    // Remove title from lyrics if it's the first line to prevent duplication by AI
+    const lines = cleanLyrics.split('\n');
+    if (lines.length > 0 && lines[0].trim().toLowerCase() === title.trim().toLowerCase()) {
+      cleanLyrics = lines.slice(1).join('\n').trim();
+    }
 
     if (!cleanLyrics) {
       throw new Error("A letra da música está vazia ou contém apenas tempos.");
@@ -69,7 +75,7 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       
       Regras CRÍTICAS de Sincronização:
       1. O formato deve ser EXATAMENTE:
-         [T:tempo_introducao] Título
+         [T:tempo_introducao] ${title}
          [duracao_slide1] Texto do Slide 1
          [duracao_slide2] Texto do Slide 2
       2. O valor entre colchetes é a DURAÇÃO (quanto tempo o slide fica visível), NÃO o tempo de início.
@@ -79,10 +85,11 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
       6. Adicione 1.5 a 2.5 segundos extras na última linha de cada estrofe para a transição musical/pausa.
       7. Retorne APENAS o texto formatado, sem comentários, explicações ou blocos de código markdown.
       8. Use PONTO como separador decimal (ex: 5.5).
-      9. IMPORTANTE: Você deve incluir TODAS as linhas da letra original. NÃO resuma, NÃO omita estrofes e NÃO pule nenhuma parte da música. A letra final deve ter exatamente o mesmo conteúdo textual da original, apenas acrescida dos tempos.
+      9. IMPORTANTE: Você deve incluir TODAS as linhas da letra original. NÃO resuma, NÃO omita estrofes e NÃO pule nenhuma parte da música.
+      10. EVITE DUPLICAÇÃO: A primeira linha do seu retorno DEVE ser o título com a tag [T:...]. Se a letra original fornecida abaixo já começar com o título da música, NÃO o repita como um slide comum (com tag [duracao]). Comece os slides diretamente pela primeira estrofe real.
       
       Exemplo de retorno esperado:
-      [T:10.0] Título do Hino
+      [T:10.0] ${title}
       [5.2] Primeira frase da música que é curta
       [7.8] Segunda frase da música que é um pouco mais longa e complexa
       [8.5] Última frase da estrofe com uma pausa instrumental no final

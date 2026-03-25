@@ -545,11 +545,15 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
     const rawLines = cleanLyrics.split('\n');
     
+    // Check if the first line is the same as the title to avoid duplication
+    const firstLineIsTitle = rawLines.length > 0 && rawLines[0].trim().toLowerCase() === (title || '').trim().toLowerCase();
+    const linesToProcess = firstLineIsTitle ? rawLines.slice(1) : rawLines;
+    
     const parsedSlides = [
       { text: title || 'Título', timing: titleTiming, isTitle: true, rawIndex: -1 }
     ];
 
-    rawLines.forEach((l, idx) => {
+    linesToProcess.forEach((l, idx) => {
       const isTimingTagOnly = l.match(/^\[(\d+(?:[.,]\d+)?)\]$/);
       if (l.trim().length > 0 || isTimingTagOnly) {
         const match = l.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
@@ -557,7 +561,7 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
           text: match ? match[2] : l, 
           timing: match ? match[1].replace(',', '.') : '5',
           isTitle: false,
-          rawIndex: idx
+          rawIndex: firstLineIsTitle ? idx + 1 : idx
         });
       }
     });
