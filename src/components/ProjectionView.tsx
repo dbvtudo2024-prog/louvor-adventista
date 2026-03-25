@@ -150,18 +150,25 @@ export function ProjectionView({
     let lyrics = song.lyrics || '';
     
     // Check for custom title timing [T:seconds]
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\](.*)/);
     const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1].replace(',', '.')) : autoAdvanceSeconds;
     
-    // Remove the title timing tag if it exists for parsing the rest of the lines
-    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '') : lyrics;
+    // Remove the entire first line if it contains the [T:...] tag
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\].*\n?/, '') : lyrics;
     
     const lines = lyricsToParse
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
-    const parsed = lines.map(line => {
+    // Check if the new first line is the same as the title to avoid duplication
+    const firstLine = lines.length > 0 ? lines[0] : '';
+    const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
+    const firstLineIsTitle = firstLineContent.toLowerCase() === (song.title || '').trim().toLowerCase();
+    
+    const linesToProcess = firstLineIsTitle ? lines.slice(1) : lines;
+
+    const parsed = linesToProcess.map(line => {
       const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       if (match) {
         return { timing: parseFloat(match[1].replace(',', '.')), text: match[2] };

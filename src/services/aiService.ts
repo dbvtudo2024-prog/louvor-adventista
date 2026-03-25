@@ -109,7 +109,7 @@ export async function generateLyricsTimings(title: string, lyrics: string): Prom
     }
 
     // Clean markdown code blocks if AI included them
-    resultText = resultText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
+    resultText = resultText.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
 
     return resultText;
   } catch (error: any) {

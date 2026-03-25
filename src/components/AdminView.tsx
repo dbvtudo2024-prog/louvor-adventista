@@ -540,13 +540,18 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
   };
 
   const baseSlides = useMemo(() => {
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\](.*)/);
     const titleTiming = titleTimingMatch ? titleTimingMatch[1].replace(',', '.') : '5';
-    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '');
-    const rawLines = cleanLyrics.split('\n');
     
-    // Check if the first line is the same as the title to avoid duplication
-    const firstLineIsTitle = rawLines.length > 0 && rawLines[0].trim().toLowerCase() === (title || '').trim().toLowerCase();
+    // Remove the entire first line if it contains the [T:...] tag
+    const cleanLyrics = lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\].*\n?/, '');
+    const rawLines = cleanLyrics.split('\n').map(l => l.trim()).filter(l => l.length > 0 || l.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
+    
+    // Check if the new first line is the same as the title to avoid duplication
+    const firstLine = rawLines.length > 0 ? rawLines[0] : '';
+    const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
+    const firstLineIsTitle = firstLineContent.toLowerCase() === (title || '').trim().toLowerCase();
+    
     const linesToProcess = firstLineIsTitle ? rawLines.slice(1) : rawLines;
     
     const parsedSlides = [
