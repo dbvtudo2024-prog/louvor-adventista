@@ -40,3 +40,23 @@
   scrollbar-width: none;
 }
 
+/* Custom Sleek Dark Scrollbar matching desktop presentation apps */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2a2d34;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2d34 transparent;
+}
+

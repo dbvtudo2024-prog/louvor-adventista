@@ -1,5 +1,6 @@
 {
   "name": "Louvor Adventista",
   "description": "Hinário e coletâneas de músicas adventistas com letras, áudio e suporte offline.",
-  "requestFramePermissions": ["screen-wake-lock"]
+  "requestFramePermissions": ["screen-wake-lock"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

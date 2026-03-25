@@ -9,13 +9,16 @@ export interface Song {
   id: string;
   collection_id: string;
   album_name?: string;
-  year?: number;
+  year?: number | string;
   number?: number;
   title: string;
   lyrics: string;
   audio_url?: string;
   cover_url?: string;
   author?: string;
+  duration?: string;
+  category?: string;
+  is_custom?: boolean;
 }
 
 export interface Favorite {

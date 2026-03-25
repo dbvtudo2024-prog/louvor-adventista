@@ -41,6 +41,15 @@ import { MOCK_COLLECTIONS, MOCK_SONGS } from './data';
 import { AdminView } from './components/AdminView';
 import { ProjectionView } from './components/ProjectionView';
 import { ProjectedOnlyView } from './components/ProjectedOnlyView';
+import { TopBar } from './components/TopBar';
+import { BottomDock, TabType } from './components/BottomDock';
+import { HomeHero } from './components/HomeHero';
+import { TelasModal } from './components/TelasModal';
+import { LiturgiaView } from './components/LiturgiaView';
+import { BibliaView } from './components/BibliaView';
+import { UtilitariosView } from './components/UtilitariosView';
+import { ConfiguracoesView } from './components/ConfiguracoesView';
+import { MusicEmblem } from './components/MusicEmblem';
 
 // Error Boundary Component
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: any }> {
@@ -117,12 +126,13 @@ export default function App() {
 }
 
 function AppContent() {
-  const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin'>('home');
+  const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin' | 'liturgia' | 'biblia' | 'utilitarios' | 'configuracoes'>('home');
   const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
   const [songs, setSongs] = useState<Song[]>(MOCK_SONGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [configError, setConfigError] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<{ album: string, year: number | string, cover_url?: string } | null>(null);
@@ -155,6 +165,34 @@ function AppContent() {
   const [isTvMode, setIsTvMode] = useState(false);
   const [showRemoteInfo, setShowRemoteInfo] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [currentTab, setCurrentTab] = useState<TabType>('inicio');
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [isTelasModalOpen, setIsTelasModalOpen] = useState(false);
+
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 10, 130));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 10, 70));
+  const handleZoomReset = () => setZoomLevel(100);
+
+  const handleSelectTab = (tab: TabType) => {
+    setCurrentTab(tab);
+    if (tab === 'inicio') {
+      setView('home');
+      setSelectedCollection(null);
+      setSelectedAlbum(null);
+    } else if (tab === 'midia') {
+      if (view !== 'collection' && view !== 'song') {
+        setView('home');
+      }
+    } else if (tab === 'liturgia') {
+      setView('liturgia');
+    } else if (tab === 'biblia') {
+      setView('biblia');
+    } else if (tab === 'utilitarios') {
+      setView('utilitarios');
+    } else if (tab === 'configuracoes') {
+      setView('configuracoes');
+    }
+  };
   const socketRef = useRef<Socket | null>(null);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -411,6 +449,11 @@ function AppContent() {
 
   // Fetch data from Supabase
   const fetchData = useCallback(async () => {
+    if (isDemoMode) {
+      setIsLoading(false);
+      return;
+    }
+
     const supabase = getSupabase();
     
     if (!supabase) {
@@ -505,11 +548,11 @@ function AppContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedSong]);
+  }, [selectedSong, isDemoMode]);
 
   useEffect(() => {
     fetchData().catch(err => console.error('Error in initial fetchData:', err));
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     if (selectedSong?.audio_url) {
@@ -626,6 +669,20 @@ function AppContent() {
     setIsProjecting(false);
     setIsSlideMode(false);
     setIsMenuOpen(false);
+
+    if (newView === 'home') {
+      setCurrentTab('inicio');
+    } else if (newView === 'collection') {
+      setCurrentTab('midia');
+    } else if (newView === 'liturgia') {
+      setCurrentTab('liturgia');
+    } else if (newView === 'biblia') {
+      setCurrentTab('biblia');
+    } else if (newView === 'utilitarios') {
+      setCurrentTab('utilitarios');
+    } else if (newView === 'configuracoes') {
+      setCurrentTab('configuracoes');
+    }
     
     const state = { 
       view: newView, 
@@ -714,152 +771,201 @@ function AppContent() {
           </div>
         </div>
 
-        <p className="text-sm text-slate-400 italic">
+        <p className="text-sm text-slate-400 italic mb-6">
           Após adicionar as chaves, o aplicativo carregará automaticamente.
         </p>
+
+        <button
+          onClick={() => {
+            setIsDemoMode(true);
+            setConfigError(false);
+            setIsLoading(false);
+          }}
+          className="w-full py-3 px-6 bg-brand-primary hover:bg-brand-primary/90 text-white font-serif font-bold rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Play className="w-5 h-5" />
+          Usar Modo de Demonstração
+        </button>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm max-w-md mx-auto">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121214] text-white p-6 select-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <img 
-            src="https://xdwplwqpnsglaitedehu.supabase.co/storage/v1/object/public/images/logo%20512.png" 
-            alt="Logo" 
-            className="w-48 h-48 object-contain drop-shadow-xl"
-            referrerPolicy="no-referrer"
-          />
+          <MusicEmblem size={120} />
         </motion.div>
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
-          <p className="text-brand-primary font-serif italic text-lg">Preparando louvores...</p>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-7 h-7 text-amber-400 animate-spin" />
+          <p className="text-neutral-300 font-sans text-sm tracking-wide">Carregando louvores...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col w-full bg-brand-warm relative overflow-hidden transition-colors duration-500">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white px-6 py-5 flex items-center justify-between border-b border-slate-100 shadow-sm">
-        <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
-          {view !== 'home' && (
-            <button onClick={handleBack} className="p-2 -ml-2 hover:bg-black/5 rounded-full transition-colors">
-              <ChevronLeft className="w-6 h-6 text-brand-primary" />
-            </button>
-          )}
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-brand-primary flex-1">
-            {view === 'home' ? 'Louvor Adventista' : 
-             view === 'collection' ? (selectedAlbum ? selectedAlbum.album : selectedCollection?.name) : 
-             view === 'favorites' ? 'Favoritos' : 
-             view === 'song' ? (collections.find(c => c.id === selectedSong?.collection_id)?.name || 'Música') :
-             view === 'admin' ? 'Administração' : 'Louvor'}
-          </h1>
-          <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-black/5 rounded-full transition-colors relative">
-            <Menu className="w-6 h-6 text-brand-primary" />
-            {!isOnline && (
-              <div className="absolute -top-0.5 -right-0.5 bg-amber-500 rounded-full p-1 border-2 border-white shadow-sm">
-                <WifiOff className="w-2.5 h-2.5 text-white" />
-              </div>
-            )}
-          </button>
-        </div>
-      </header>
+    <div 
+      style={{ zoom: `${zoomLevel}%` }}
+      className="h-screen flex flex-col w-full bg-[#121214] text-white relative overflow-hidden transition-colors duration-500"
+    >
+      {/* Top Navigation Bar */}
+      <TopBar
+        zoomLevel={zoomLevel}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+        onOpenTelas={() => setIsTelasModalOpen(true)}
+        onOpenProjectOnly={() => {
+          const url = `${window.location.origin}/?project=true${selectedSong ? `&songId=${selectedSong.id}` : ''}`;
+          window.open(url, '_blank', 'width=1280,height=720');
+        }}
+        onToggleProjection={() => {
+          if (selectedSong) {
+            setIsProjecting(true);
+          } else if (songs.length > 0) {
+            setSelectedSong(songs[0]);
+            setIsProjecting(true);
+          } else {
+            setIsTelasModalOpen(true);
+          }
+        }}
+        onOpenMenu={() => setIsMenuOpen(true)}
+        isOnline={isOnline}
+        canGoBack={view !== 'home' || currentTab !== 'inicio'}
+        onBack={() => {
+          if (view === 'liturgia' || view === 'biblia' || view === 'utilitarios' || view === 'configuracoes') {
+            handleSelectTab('inicio');
+          } else if (view !== 'home') {
+            handleBack();
+          } else {
+            setCurrentTab('inicio');
+          }
+        }}
+        title={
+          view === 'home' 
+            ? (currentTab === 'midia' ? 'Central de Mídia' : 'Louvor Adventista') 
+            : view === 'liturgia' ? 'Liturgia do Culto'
+            : view === 'biblia' ? 'Bíblia Sagrada'
+            : view === 'utilitarios' ? 'Utilitários'
+            : view === 'configuracoes' ? 'Configurações'
+            : view === 'collection' ? (selectedAlbum ? selectedAlbum.album : selectedCollection?.name) 
+            : view === 'favorites' ? 'Favoritos' 
+            : view === 'song' ? (selectedSong?.title || 'Música') 
+            : view === 'admin' ? 'Administração' : 'Louvor'
+        }
+      />
 
       {/* Main Content */}
       <main 
         ref={mainRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto scrollbar-hide pb-24 max-w-7xl mx-auto w-full"
+        className="flex-1 min-h-0 w-full overflow-hidden pb-16 sm:pb-20"
       >
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
-              key="home"
-              initial={{ opacity: 0, y: 20 }}
+              key={currentTab}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="p-6 space-y-8"
+              exit={{ opacity: 0, y: -15 }}
+              className="w-full h-full overflow-hidden"
             >
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar hinos ou letras..."
-                  className="w-full pl-12 pr-4 py-4 bg-white text-slate-900 rounded-2xl border border-slate-100 shadow-sm focus:ring-2 focus:ring-brand-secondary/20 transition-all outline-none placeholder:text-slate-400"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-
-              {/* Collections Grid */}
-              {searchQuery ? (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Resultados da Busca</h3>
-                  <div className="space-y-2">
-                    {filteredSongs.length > 0 ? (
-                      filteredSongs.map((song) => (
-                        <button
-                          key={song.id}
-                          onClick={() => navigateTo('song', { song })}
-                          className="w-full flex items-center gap-4 p-4 bg-white rounded-xl hover:bg-brand-primary/5 transition-all text-left group border border-slate-100 shadow-sm"
-                        >
-                          <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center text-brand-primary shrink-0 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                            <Music className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="block font-bold text-brand-primary truncate">{song.title}</span>
-                            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                              {collections.find(c => c.id === song.collection_id)?.name}
-                            </span>
-                          </div>
-                          <Heart 
-                            className={cn("w-5 h-5 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-slate-200")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(song.id);
-                            }}
-                          />
-                        </button>
-                      ))
-                    ) : (
-                      <div className="text-center py-12 text-slate-400">
-                        Nenhum hino encontrado para "{searchQuery}"
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {currentTab === 'inicio' ? (
+                <HomeHero />
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pb-12">
-                  {collections.map((collection) => {
-                    const Icon = ICON_MAP[collection.icon] || Music;
-                    return (
-                      <motion.button
-                        key={`collection-${collection.id}`}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          navigateTo('collection', { collection });
-                        }}
-                        className="flex flex-col items-center justify-center p-6 bg-white rounded-[2rem] shadow-sm border border-slate-100 group transition-all hover:scale-[1.02] active:scale-[0.98]"
-                      >
-                        <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4 group-hover:bg-brand-primary group-hover:text-white transition-colors text-brand-primary">
-                          <Icon className="w-8 h-8" />
-                        </div>
-                        <span className="text-sm font-bold text-brand-primary text-center leading-tight">
-                          {collection.name}
-                        </span>
-                      </motion.button>
-                    );
-                  })}
+                /* Media Center Tab */
+                <div className="p-6 max-w-7xl mx-auto space-y-6 h-full overflow-y-auto custom-scrollbar">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
+                    <div>
+                      <h2 className="text-xl font-bold text-white tracking-tight">Central de Mídia</h2>
+                      <p className="text-xs text-neutral-400">Coletâneas, hinários e álbuns de louvor</p>
+                    </div>
+                    <div className="relative w-full sm:w-80">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                      <input
+                        type="text"
+                        placeholder="Pesquisar por título, letra ou número..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  {searchQuery ? (
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest px-1">
+                        Resultados da Busca
+                      </h3>
+                      <div className="space-y-2">
+                        {filteredSongs.length > 0 ? (
+                          filteredSongs.map((song) => (
+                            <button
+                              key={song.id}
+                              onClick={() => navigateTo('song', { song })}
+                              className="w-full flex items-center gap-4 p-3.5 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 text-left transition-all group"
+                            >
+                              <div className="w-10 h-10 rounded-xl bg-neutral-800 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+                                {song.number || '♪'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block font-bold text-white group-hover:text-amber-300 text-sm truncate">
+                                  {song.title}
+                                </span>
+                                <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+                                  {collections.find(c => c.id === song.collection_id)?.name}
+                                </span>
+                              </div>
+                              <Heart 
+                                className={cn("w-4 h-4 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavorite(song.id);
+                                }}
+                              />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="text-center py-12 text-neutral-500 text-xs">
+                            Nenhum hino encontrado para "{searchQuery}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {collections.map((collection) => {
+                        const Icon = ICON_MAP[collection.icon] || Music;
+                        return (
+                          <motion.button
+                            key={`collection-${collection.id}`}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                              navigateTo('collection', { collection });
+                            }}
+                            className="flex flex-col items-center justify-center p-6 bg-neutral-900/80 hover:bg-neutral-800 rounded-3xl border border-neutral-800 hover:border-amber-500/40 group transition-all text-center"
+                          >
+                            <div className="w-16 h-16 rounded-2xl bg-neutral-800 group-hover:bg-amber-500 group-hover:text-neutral-950 flex items-center justify-center mb-4 text-amber-400 transition-colors shadow-inner">
+                              <Icon className="w-8 h-8" />
+                            </div>
+                            <span className="text-sm font-bold text-white group-hover:text-amber-300 leading-tight">
+                              {collection.name}
+                            </span>
+                            <span className="text-[10px] text-neutral-500 mt-1 font-semibold uppercase tracking-wider">
+                              Abrir Coletânea
+                            </span>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -871,14 +977,14 @@ function AppContent() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="p-6 space-y-4"
+              className="w-full h-full overflow-y-auto custom-scrollbar p-6 space-y-4 max-w-7xl mx-auto"
             >
               <div className="relative mb-6">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
                 <input
                   type="text"
-                  placeholder="Pesquisar..."
-                  className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl border border-slate-100 shadow-sm outline-none placeholder:text-slate-400"
+                  placeholder="Pesquisar hinos..."
+                  className="w-full pl-12 pr-4 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 shadow-sm outline-none focus:border-amber-400"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -895,8 +1001,8 @@ function AppContent() {
                       onClick={() => navigateTo('collection', { album })}
                       className="flex flex-col gap-1.5"
                     >
-                      <div className="aspect-square bg-sky-400 rounded-xl overflow-hidden shadow-md border-2 border-white flex items-center justify-center relative group">
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-50" />
+                      <div className="aspect-square bg-neutral-900 rounded-xl overflow-hidden shadow-md border border-neutral-800 flex items-center justify-center relative group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-50" />
                         {album.cover_url ? (
                           <img 
                             src={album.cover_url} 
@@ -905,20 +1011,20 @@ function AppContent() {
                             referrerPolicy="no-referrer"
                           />
                         ) : album.album !== 'Desconhecido' ? (
-                          <div className="absolute inset-0 flex items-center justify-center p-2 bg-sky-500/10">
-                            <span className="text-[10px] font-bold text-white text-center leading-tight drop-shadow-md uppercase tracking-tighter">
+                          <div className="absolute inset-0 flex items-center justify-center p-2 bg-neutral-800/60">
+                            <span className="text-[10px] font-bold text-amber-300 text-center leading-tight drop-shadow-md uppercase tracking-tighter">
                               {album.album}
                             </span>
                           </div>
                         ) : (
-                          <Disc className="w-8 h-8 text-white/40" />
+                          <Disc className="w-8 h-8 text-neutral-600" />
                         )}
                       </div>
-                      <div className="bg-white rounded-lg py-1 shadow-sm border border-slate-100 flex flex-col items-center px-1">
-                        <span className="text-[10px] font-bold text-sky-500 text-center block tracking-tighter truncate w-full">
+                      <div className="bg-neutral-900 rounded-lg py-1 shadow-sm border border-neutral-800 flex flex-col items-center px-1">
+                        <span className="text-[10px] font-bold text-amber-400 text-center block tracking-tighter truncate w-full">
                           {album.album}
                         </span>
-                        <span className="text-[8px] font-medium text-slate-400 text-center block tracking-tighter">
+                        <span className="text-[8px] font-medium text-neutral-400 text-center block tracking-tighter">
                           {album.year || 'S/ Ano'}
                         </span>
                       </div>
@@ -935,16 +1041,16 @@ function AppContent() {
                         onClick={() => {
                           navigateTo('song', { song });
                         }}
-                        className="w-full flex items-center gap-4 p-4 bg-white rounded-xl hover:bg-brand-primary/5 transition-all text-left group border-b border-slate-50"
+                        className="w-full flex items-center gap-4 p-4 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 transition-all text-left group"
                       >
-                        <span className="text-sm font-bold text-brand-secondary w-8">
+                        <span className="text-sm font-bold text-amber-400 w-8 font-mono">
                           {song.number || '•'}
                         </span>
-                        <span className="flex-1 font-bold text-brand-primary group-hover:text-brand-primary transition-colors">
+                        <span className="flex-1 font-bold text-white group-hover:text-amber-300 transition-colors text-sm truncate">
                           {song.title}
                         </span>
                         <Heart 
-                          className={cn("w-5 h-5 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-slate-200")}
+                          className={cn("w-5 h-5 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600")}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleFavorite(song.id);
@@ -953,7 +1059,7 @@ function AppContent() {
                       </button>
                     ))
                   ) : (
-                    <div className="text-center py-12 text-slate-400">
+                    <div className="text-center py-12 text-neutral-500 text-xs">
                       Nenhum resultado encontrado.
                     </div>
                   )}
@@ -1062,18 +1168,18 @@ function AppContent() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              className="p-8 flex flex-col items-center"
+              className="w-full h-full overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col items-center"
             >
               <div className="w-full max-w-prose space-y-8">
-                {/* Song Player Controls & Favorite - IMAGE 1 STYLE */}
+                {/* Song Player Controls & Favorite */}
                 <div className="flex items-center gap-4 w-full">
-                  <div className="flex-1 bg-white rounded-2xl p-4 shadow-xl border border-slate-100 flex flex-col gap-3 relative overflow-hidden">
+                  <div className="flex-1 bg-neutral-900/90 rounded-2xl p-4 shadow-xl border border-neutral-800 flex flex-col gap-3 relative overflow-hidden">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-sm font-bold text-brand-primary truncate">
+                        <span className="text-sm font-bold text-white truncate">
                           {selectedSong.title}
                         </span>
-                        <span className="text-[10px] font-mono text-slate-400">
+                        <span className="text-[10px] font-mono text-neutral-400">
                           {formatTime(currentTime)} / {formatTime(duration)}
                         </span>
                       </div>
@@ -1089,8 +1195,8 @@ function AppContent() {
                           }}
                           disabled={!selectedSong.audio_url}
                           className={cn(
-                            "w-10 h-10 rounded-full text-white shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95",
-                            selectedSong.audio_url ? "bg-sky-400" : "bg-slate-300 cursor-not-allowed"
+                            "w-10 h-10 rounded-full text-neutral-950 shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95",
+                            selectedSong.audio_url ? "bg-amber-400 hover:bg-amber-300" : "bg-neutral-800 text-neutral-600 cursor-not-allowed"
                           )}
                           title={isPlaying ? "Pausar" : "Tocar"}
                         >
@@ -1104,7 +1210,7 @@ function AppContent() {
                             }
                             setIsProjecting(true);
                           }}
-                          className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 shadow-sm flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all active:scale-95"
+                          className="w-10 h-10 rounded-full bg-neutral-800 text-neutral-300 hover:text-amber-400 shadow-sm flex items-center justify-center hover:bg-neutral-700 transition-all active:scale-95"
                           title="Projetar Letra"
                         >
                           <Monitor className="w-5 h-5" />
@@ -1115,7 +1221,7 @@ function AppContent() {
                     {/* Progress Bar */}
                     <div className="space-y-1">
                       <div 
-                        className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden cursor-pointer relative"
+                        className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden cursor-pointer relative"
                         onClick={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
                           const x = e.clientX - rect.left;
@@ -1124,7 +1230,7 @@ function AppContent() {
                         }}
                       >
                         <motion.div 
-                          className="h-full bg-sky-400 rounded-full"
+                          className="h-full bg-amber-400 rounded-full"
                           initial={false}
                           animate={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
                           transition={{ type: "spring", bounce: 0, duration: 0.2 }}
@@ -1138,27 +1244,27 @@ function AppContent() {
                     className={cn(
                       "w-12 h-12 rounded-full shadow-lg transition-all border flex items-center justify-center shrink-0",
                       favorites.includes(selectedSong.id) 
-                        ? "bg-red-50 border-red-100 text-red-500" 
-                        : "bg-white border-slate-100 text-slate-400"
+                        ? "bg-red-500/20 border-red-500/40 text-red-500" 
+                        : "bg-neutral-900 border-neutral-800 text-neutral-500 hover:text-neutral-300"
                     )}
                    >
                     <Heart className={cn("w-6 h-6", favorites.includes(selectedSong.id) && "fill-current")} />
                    </button>
                 </div>
 
-                <div className="text-center space-y-4">
+                <div className="text-center space-y-3">
                   <div className="flex flex-col items-center gap-1">
                     {selectedSong.number && (
-                      <span className="text-brand-secondary font-bold tracking-widest uppercase text-xs">
-                        {selectedSong.number.toString().padStart(2, '0')}
+                      <span className="text-amber-400 font-mono font-bold tracking-widest uppercase text-sm">
+                        Nº {selectedSong.number.toString().padStart(2, '0')}
                       </span>
                     )}
                   </div>
-                  <h2 className="text-3xl font-serif font-bold text-brand-primary">
+                  <h2 className="text-3xl sm:text-4xl font-serif font-bold text-white tracking-tight">
                     {selectedSong.title}
                   </h2>
                   {selectedSong.album_name && (
-                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
+                    <p className="text-neutral-400 text-xs font-semibold uppercase tracking-widest">
                       {selectedSong.album_name}
                     </p>
                   )}
@@ -1177,8 +1283,8 @@ function AppContent() {
                       setCurrentSlideIndex(0);
                     }}
                     className={cn(
-                      "flex items-center gap-2 px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest transition-all",
-                      isSlideMode ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      "flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest transition-all",
+                      isSlideMode ? "bg-amber-400 text-neutral-950 shadow-md" : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
                     )}
                   >
                     <Monitor className="w-4 h-4" />
@@ -1187,7 +1293,7 @@ function AppContent() {
                   {isSlideMode && remoteRoomId && (
                     <button 
                       onClick={() => setShowRemoteInfo(true)}
-                      className="p-2 bg-[#F27D26]/10 text-[#F27D26] rounded-full hover:bg-[#F27D26]/20 transition-all border border-[#F27D26]/20"
+                      className="p-2.5 bg-amber-400/10 text-amber-400 rounded-full hover:bg-amber-400/20 transition-all border border-amber-400/30"
                       title="Projetar na TV"
                     >
                       <Tv className="w-5 h-5" />
@@ -1203,7 +1309,7 @@ function AppContent() {
                           key={idx} 
                           className={cn(
                             "h-1.5 rounded-full transition-all",
-                            idx === currentSlideIndex ? "w-8 bg-brand-primary" : "w-2 bg-slate-200"
+                            idx === currentSlideIndex ? "w-8 bg-amber-400" : "w-2 bg-neutral-700"
                           )}
                         />
                       ))}
@@ -1216,7 +1322,7 @@ function AppContent() {
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                         className={cn(
-                          "text-center leading-relaxed text-brand-primary italic transition-all min-h-[150px] flex items-center justify-center",
+                          "text-center leading-relaxed text-white drop-shadow-md italic transition-all min-h-[150px] flex items-center justify-center",
                           fontSize === 'sm' ? "text-2xl" : fontSize === 'md' ? "text-4xl" : "text-5xl",
                           fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                         )}
@@ -1228,14 +1334,14 @@ function AppContent() {
                       <button 
                         onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))}
                         disabled={currentSlideIndex === 0}
-                        className="p-4 rounded-full bg-slate-100 text-slate-400 disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                        className="p-4 rounded-full bg-neutral-800 text-neutral-300 disabled:opacity-30 hover:bg-neutral-700 transition-colors"
                       >
                         <SkipBack className="w-6 h-6" />
                       </button>
                       <button 
                         onClick={() => setCurrentSlideIndex(Math.min(slides.length - 1, currentSlideIndex + 1))}
                         disabled={currentSlideIndex === slides.length - 1}
-                        className="p-4 rounded-full bg-slate-100 text-slate-400 disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                        className="p-4 rounded-full bg-neutral-800 text-neutral-300 disabled:opacity-30 hover:bg-neutral-700 transition-colors"
                       >
                         <SkipForward className="w-6 h-6" />
                       </button>
@@ -1243,7 +1349,7 @@ function AppContent() {
                   </div>
                 ) : (
                   <div className={cn(
-                    "whitespace-pre-line text-center leading-relaxed text-brand-primary italic transition-all",
+                    "whitespace-pre-line text-center leading-relaxed text-neutral-100 transition-all py-4",
                     fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl",
                     fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                   )}>
@@ -1275,29 +1381,109 @@ function AppContent() {
               onSongUpdated={fetchData}
             />
           )}
+
+          {view === 'liturgia' && (
+            <motion.div
+              key="liturgia-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full h-full overflow-hidden"
+            >
+              <LiturgiaView
+                songs={songs}
+                onSelectSong={(song) => navigateTo('song', { song })}
+                onProjectSong={(song) => {
+                  setSelectedSong(song);
+                  setIsProjecting(true);
+                }}
+                onBackToHome={() => handleSelectTab('inicio')}
+              />
+            </motion.div>
+          )}
+
+          {view === 'biblia' && (
+            <motion.div
+              key="biblia-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full h-full overflow-hidden"
+            >
+              <BibliaView
+                onProjectVerse={(verseSong) => {
+                  setSelectedSong(verseSong);
+                  setIsProjecting(true);
+                }}
+                onBackToHome={() => handleSelectTab('inicio')}
+              />
+            </motion.div>
+          )}
+
+          {view === 'utilitarios' && (
+            <motion.div
+              key="utilitarios-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full h-full overflow-hidden"
+            >
+              <UtilitariosView
+                onProjectContent={(utilitySong) => {
+                  setSelectedSong(utilitySong);
+                  setIsProjecting(true);
+                }}
+                onBackToHome={() => handleSelectTab('inicio')}
+              />
+            </motion.div>
+          )}
+
+          {view === 'configuracoes' && (
+            <motion.div
+              key="configuracoes-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full h-full overflow-hidden"
+            >
+              <ConfiguracoesView
+                onBackToHome={() => handleSelectTab('inicio')}
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
-      {/* Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 z-50">
-        <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-around">
-          <button 
-            onClick={() => navigateTo('home')}
-            className={cn("flex flex-col items-center gap-1 transition-colors", view === 'home' ? "text-brand-primary" : "text-slate-400")}
-          >
-            <Home className="w-6 h-6" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Início</span>
-          </button>
-          
-          <button 
-            onClick={() => navigateTo('favorites')}
-            className={cn("flex flex-col items-center gap-1 transition-colors", view === 'favorites' ? "text-brand-primary" : "text-slate-400")}
-          >
-            <Heart className="w-6 h-6" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Favoritos</span>
-          </button>
-        </div>
-      </nav>
+      {/* Bottom Navigation Dock matching Reference Image */}
+      <BottomDock
+        currentTab={currentTab}
+        onSelectTab={handleSelectTab}
+      />
+
+      {/* Screens & Projection Manager Modal */}
+      <TelasModal
+        isOpen={isTelasModalOpen}
+        onClose={() => setIsTelasModalOpen(false)}
+        onStartProjection={() => {
+          if (selectedSong) {
+            setIsProjecting(true);
+          } else if (songs.length > 0) {
+            setSelectedSong(songs[0]);
+            setIsProjecting(true);
+          }
+        }}
+        onOpenProjectOnly={(targetScreen) => {
+          const url = `${window.location.origin}/?project=true${selectedSong ? `&songId=${selectedSong.id}` : ''}`;
+          const left = targetScreen?.left ?? window.screen.availWidth ?? 1920;
+          const top = targetScreen?.top ?? 0;
+          const width = targetScreen?.width ?? 1920;
+          const height = targetScreen?.height ?? 1080;
+          window.open(url, '_blank', `left=${left},top=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no`);
+        }}
+        remoteRoomId={remoteRoomId}
+        copied={copied}
+        onCopyTvUrl={copyRemoteUrl}
+      />
 
 
       {/* Side Menu Overlay */}
@@ -1318,34 +1504,34 @@ function AppContent() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-80 bg-brand-warm z-[70] p-8 shadow-2xl flex flex-col"
+              className="fixed top-0 right-0 bottom-0 w-80 bg-[#18181b] border-l border-neutral-800 text-white z-[70] p-8 shadow-2xl flex flex-col"
             >
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-2">
                   {menuView !== 'main' && (
-                    <button onClick={() => setMenuView('main')} className="p-1 -ml-1 text-slate-400">
+                    <button onClick={() => setMenuView('main')} className="p-1 -ml-1 text-neutral-400 hover:text-white">
                       <ChevronLeft className="w-5 h-5" />
                     </button>
                   )}
-                  <h3 className="font-serif text-2xl font-bold text-brand-primary">
+                  <h3 className="font-serif text-2xl font-bold text-white">
                     {menuView === 'main' ? 'Menu' : 
                      menuView === 'settings' ? 'Configurações' :
                      menuView === 'audio' ? 'Áudio' : 'Conta'}
                   </h3>
                 </div>
                 <button onClick={() => { setIsMenuOpen(false); setMenuView('main'); }}>
-                  <X className="w-6 h-6 text-slate-400" />
+                  <X className="w-6 h-6 text-neutral-400 hover:text-white" />
                 </button>
               </div>
 
               {!isOnline && (
-                <div className="mx-6 mb-6 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-3">
-                  <div className="p-2 bg-amber-100 rounded-lg">
-                    <WifiOff className="w-4 h-4 text-amber-600" />
+                <div className="mx-0 mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-lg">
+                    <WifiOff className="w-4 h-4 text-amber-400" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-amber-800">Modo Offline</p>
-                    <p className="text-[10px] text-amber-600">Acesso limitado a hinos já carregados.</p>
+                    <p className="text-xs font-bold text-amber-300">Modo Offline</p>
+                    <p className="text-[10px] text-amber-400/80">Acesso limitado a hinos já carregados.</p>
                   </div>
                 </div>
               )}
@@ -1358,36 +1544,36 @@ function AppContent() {
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -10 }}
-                      className="space-y-6"
+                      className="space-y-4"
                     >
                       <button 
-                        onClick={() => setMenuView('settings')}
-                        className="flex items-center gap-4 w-full text-left text-slate-600 hover:text-brand-primary transition-colors p-2 rounded-lg hover:bg-slate-50"
+                        onClick={() => { setIsMenuOpen(false); navigateTo('configuracoes'); }}
+                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
                       >
                         <Settings className="w-5 h-5" />
-                        <span className="font-medium">Configurações</span>
+                        <span className="font-medium text-sm">Configurações</span>
                       </button>
                       <button 
                         onClick={() => setMenuView('audio')}
-                        className="flex items-center gap-4 w-full text-left text-slate-600 hover:text-brand-primary transition-colors p-2 rounded-lg hover:bg-slate-50"
+                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
                       >
                         <Volume2 className="w-5 h-5" />
-                        <span className="font-medium">Ajustes de Áudio</span>
+                        <span className="font-medium text-sm">Ajustes de Áudio</span>
                       </button>
                       {(user?.email === 'ronaldosonic@gmail.com' || user?.email === 'mush157s12@gmail.com') && (
                         <button 
                           onClick={() => { setMenuView('main'); setIsMenuOpen(false); navigateTo('admin'); }}
-                          className="flex items-center gap-4 w-full text-left text-slate-600 hover:text-brand-primary transition-colors p-2 rounded-lg hover:bg-slate-50"
+                          className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
                         >
                           <Library className="w-5 h-5" />
-                          <span className="font-medium">Painel Administrativo</span>
+                          <span className="font-medium text-sm">Painel Administrativo</span>
                         </button>
                       )}
                       
                       {deferredPrompt && (
                         <button 
                           onClick={handleInstallClick}
-                          className="flex items-center gap-4 w-full text-left text-brand-primary transition-colors p-3 rounded-xl bg-brand-primary/5 border border-brand-primary/10 hover:bg-brand-primary/10"
+                          className="flex items-center gap-4 w-full text-left text-amber-300 transition-colors p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20"
                         >
                           <Download className="w-5 h-5" />
                           <div className="flex flex-col">
@@ -1397,13 +1583,13 @@ function AppContent() {
                         </button>
                       )}
 
-                      <div className="pt-6 border-t border-slate-100">
-                        <p className="text-xs text-slate-400 mb-4 font-bold tracking-widest">CONTA</p>
+                      <div className="pt-6 border-t border-neutral-800">
+                        <p className="text-xs text-neutral-400 mb-4 font-bold tracking-widest">CONTA</p>
                         {user ? (
                           <div className="space-y-4">
-                            <div className="p-4 bg-white rounded-xl shadow-sm">
-                              <p className="text-xs text-slate-400">Logado como</p>
-                              <p className="text-sm font-bold text-brand-primary truncate">{user.email}</p>
+                            <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+                              <p className="text-xs text-neutral-400">Logado como</p>
+                              <p className="text-sm font-bold text-amber-400 truncate">{user.email}</p>
                             </div>
                             <button 
                               onClick={async () => {
@@ -1415,7 +1601,7 @@ function AppContent() {
                                   setMenuView('main');
                                 }
                               }}
-                              className="w-full py-3 border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors"
+                              className="w-full py-3 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500/10 transition-colors"
                             >
                               Sair da Conta
                             </button>
@@ -1423,7 +1609,7 @@ function AppContent() {
                         ) : (
                           <button 
                             onClick={() => setMenuView('auth')}
-                            className="w-full py-3 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
+                            className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl font-bold transition-all shadow-md active:scale-95"
                           >
                             Entrar / Sincronizar
                           </button>

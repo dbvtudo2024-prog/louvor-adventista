@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
+import { BibleProjectionScreen, SorteioProjectionScreen } from './SpecialProjections';
 
 interface ProjectionViewProps {
   song: Song;
@@ -332,49 +333,92 @@ export function ProjectionView({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isBible = song.category === 'Bíblia' || song.collection_id === 'biblia' || song.id.startsWith('bible-');
+  const isSorteio = song.id === 'sorteio-projection' || song.category === 'sorteio' || song.collection_id === 'utilitarios';
+
+  const sorteioData = useMemo(() => {
+    if (!isSorteio) return { winner: '1', winners: [] as any[] };
+    let winner = song.lyrics || '1';
+    let winners: any[] = [];
+    try {
+      if (song.author && song.author.startsWith('{')) {
+        const parsed = JSON.parse(song.author);
+        if (parsed.winner !== undefined) winner = String(parsed.winner);
+        if (Array.isArray(parsed.winners)) winners = parsed.winners;
+      }
+    } catch (e) {}
+
+    if (winners.length === 0) {
+      try {
+        const raw = localStorage.getItem('projection_sorteio_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.winner !== undefined) winner = String(parsed.winner);
+          if (Array.isArray(parsed.winners)) winners = parsed.winners;
+        }
+      } catch (e) {}
+    }
+    return { winner, winners };
+  }, [isSorteio, song.lyrics, song.author]);
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col md:flex-row overflow-hidden">
       {/* Projection Screen (The "Big" Screen) */}
       <div 
         id="projection-content"
-        className="h-[40vh] min-h-[40vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative bg-black flex items-center justify-center p-6 md:p-12 overflow-hidden group"
+        className={cn(
+          "h-[40vh] min-h-[40vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative overflow-hidden group flex items-center justify-center",
+          isBible ? "bg-[#0b0d14] p-0" : isSorteio ? "bg-black p-0" : "bg-black p-6 md:p-12"
+        )}
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentPhraseIndex}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.05 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex flex-col items-center gap-4 md:gap-8 z-10"
-          >
-            <div
-              className={cn(
-                "text-center italic select-none drop-shadow-2xl transition-colors duration-500",
-                currentPhraseIndex === 0 
-                  ? "text-brand-secondary not-italic font-bold" 
-                  : "text-white",
-                fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
-              )}
-              style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
+        {isBible ? (
+          <BibleProjectionScreen 
+            verseText={song.lyrics} 
+            reference={song.title || song.author || ''} 
+          />
+        ) : isSorteio ? (
+          <SorteioProjectionScreen 
+            winner={sorteioData.winner}
+            winnersList={sorteioData.winners}
+          />
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentPhraseIndex}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="flex flex-col items-center gap-4 md:gap-8 z-10"
             >
-              {phrases[currentPhraseIndex] || ''}
-            </div>
-            
-            {/* Next Phrase Preview */}
-            {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
-              <div 
+              <div
                 className={cn(
-                  "text-center italic select-none opacity-20 transition-all duration-500",
+                  "text-center italic select-none drop-shadow-2xl transition-colors duration-500",
+                  currentPhraseIndex === 0 
+                    ? "text-brand-secondary not-italic font-bold" 
+                    : "text-white",
                   fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                 )}
-                style={{ fontSize: 'clamp(1rem, 4vw, 3rem)', lineHeight: '1.2' }}
+                style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
               >
-                {phrases[currentPhraseIndex + 1]}
+                {phrases[currentPhraseIndex] || ''}
               </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+              
+              {/* Next Phrase Preview */}
+              {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
+                <div 
+                  className={cn(
+                    "text-center italic select-none opacity-20 transition-all duration-500",
+                    fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+                  )}
+                  style={{ fontSize: 'clamp(1rem, 4vw, 3rem)', lineHeight: '1.2' }}
+                >
+                  {phrases[currentPhraseIndex + 1]}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
 
         {/* Controls Overlay (Always visible on mobile, hover on desktop) */}
         <div className="absolute bottom-4 right-4 flex gap-2 z-30 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -419,154 +463,216 @@ export function ProjectionView({
           </button>
         </div>
 
-        {/* Lyrics Sequence */}
-        <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1 md:space-y-2 scrollbar-hide bg-slate-950/50">
-          {phrases.map((phrase, idx) => (
-            <button
-              key={idx}
-              onClick={() => setIndex(idx)}
-              className={cn(
-                "w-full text-left p-3 md:p-4 rounded-xl transition-all border",
-                idx === currentPhraseIndex 
-                  ? "bg-brand-primary border-brand-primary text-white shadow-lg scale-[1.02]" 
-                  : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] font-mono opacity-50">{idx === 0 ? 'T' : idx}</span>
-                <span className={cn(
-                  "text-sm font-medium leading-tight",
-                  idx === 0 && "text-brand-secondary font-bold"
-                )}>
-                  {phrase || <span className="italic opacity-50">(Slide Vazio)</span>}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
+        {/* Dynamic Content Panel */}
+        {isBible ? (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider block text-amber-400 mb-2">
+                Versículo Ativo no Telão
+              </span>
+              <p className="text-sm font-medium text-white leading-relaxed italic">
+                "{song.lyrics}"
+              </p>
+              <span className="text-xs font-bold text-[#facc15] mt-3 block font-sans uppercase tracking-wider">
+                {song.title}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-xs text-slate-400">
+              💡 Para trocar de versículo, selecione outro versículo no menu da Bíblia ou clique para projetar.
+            </div>
+          </div>
+        ) : isSorteio ? (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
+            <div className="p-5 rounded-2xl bg-neutral-900 border border-amber-500/30 text-center">
+              <span className="text-xs font-bold tracking-widest uppercase text-amber-400 block mb-1">
+                Número Contemplado
+              </span>
+              <span className="text-6xl font-black text-[#0ea5e9] block my-3 drop-shadow-md">
+                {sorteioData.winner}
+              </span>
+              <span className="text-xs text-neutral-400 block">
+                Total de números sorteados: {sorteioData.winners.length}
+              </span>
+            </div>
+          </div>
+        ) : (
+          /* Lyrics Sequence */
+          <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1 md:space-y-2 scrollbar-hide bg-slate-950/50">
+            {phrases.map((phrase, idx) => (
+              <button
+                key={idx}
+                onClick={() => setIndex(idx)}
+                className={cn(
+                  "w-full text-left p-3 md:p-4 rounded-xl transition-all border",
+                  idx === currentPhraseIndex 
+                    ? "bg-brand-primary border-brand-primary text-white shadow-lg scale-[1.02]" 
+                    : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-mono opacity-50">{idx === 0 ? 'T' : idx}</span>
+                  <span className={cn(
+                    "text-sm font-medium leading-tight",
+                    idx === 0 && "text-brand-secondary font-bold"
+                  )}>
+                    {phrase || <span className="italic opacity-50">(Slide Vazio)</span>}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Playback Controls */}
         <div className="p-3 md:p-4 bg-slate-900 border-t border-white/10 space-y-3 md:space-y-4">
-          {audioElement && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
-                <span>{formatTime(audioCurrentTime)}</span>
-                <span>{formatTime(audioDuration)}</span>
-              </div>
-              <div 
-                className="h-1 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const percentage = x / rect.width;
-                  audioElement.currentTime = percentage * audioDuration;
-                }}
+          {isBible || isSorteio ? (
+            <div className="space-y-2.5">
+              <button
+                onClick={openExternalWindow}
+                className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors border border-white/10"
               >
-                <motion.div 
-                  className="h-full bg-sky-400 rounded-full"
-                  initial={false}
-                  animate={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
-                  transition={{ type: "spring", bounce: 0, duration: 0.2 }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-1.5 md:gap-3">
-            {/* Volume Control */}
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => handleVolumeChange(volume === 0 ? 1 : 0)}
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                {volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                <Monitor className="w-4 h-4 text-sky-400" />
+                Abrir na 2ª Tela (Janela Externa)
               </button>
-              <input 
-                type="range" 
-                min="0" 
-                max="1" 
-                step="0.01"
-                value={volume}
-                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
-              />
-              <span className="text-[9px] font-mono text-slate-400 w-7 text-right">
-                {Math.round(volume * 100)}%
-              </span>
+              <button
+                onClick={toggleFullscreen}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                {isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia Imediata'}
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full py-2 px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors border border-red-500/30"
+              >
+                <X className="w-4 h-4" />
+                Fechar Projeção
+              </button>
             </div>
+          ) : (
+            <>
+              {audioElement && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+                    <span>{formatTime(audioCurrentTime)}</span>
+                    <span>{formatTime(audioDuration)}</span>
+                  </div>
+                  <div 
+                    className="h-1 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = e.clientX - rect.left;
+                      const percentage = x / rect.width;
+                      audioElement.currentTime = percentage * audioDuration;
+                    }}
+                  >
+                    <motion.div 
+                      className="h-full bg-sky-400 rounded-full"
+                      initial={false}
+                      animate={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
+                      transition={{ type: "spring", bounce: 0, duration: 0.2 }}
+                    />
+                  </div>
+                </div>
+              )}
 
-            <div className="flex items-center justify-between py-0.5">
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
-                <span className="text-[8px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
-              </div>
-              <button 
-                onClick={() => setIsAutoAdvance(!isAutoAdvance)}
-                className={cn(
-                  "relative w-10 h-5 rounded-full transition-colors duration-300",
-                  isAutoAdvance ? "bg-brand-primary" : "bg-slate-700"
+              <div className="flex flex-col gap-1.5 md:gap-3">
+                {/* Volume Control */}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => handleVolumeChange(volume === 0 ? 1 : 0)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    {volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={volume}
+                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                    className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                  />
+                  <span className="text-[9px] font-mono text-slate-400 w-7 text-right">
+                    {Math.round(volume * 100)}%
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between py-0.5">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
+                    <span className="text-[8px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsAutoAdvance(!isAutoAdvance)}
+                    className={cn(
+                      "relative w-10 h-5 rounded-full transition-colors duration-300",
+                      isAutoAdvance ? "bg-brand-primary" : "bg-slate-700"
+                    )}
+                  >
+                    <motion.div 
+                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
+                      animate={{ x: isAutoAdvance ? 20 : 0 }}
+                    />
+                  </button>
+                </div>
+                
+                {isAutoAdvance && (
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="range" 
+                      min="2" 
+                      max="15" 
+                      step="1"
+                      value={autoAdvanceSeconds}
+                      onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
+                      className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                    />
+                    <span className="text-[9px] font-mono text-slate-400 w-5">{autoAdvanceSeconds}s</span>
+                  </div>
                 )}
-              >
-                <motion.div 
-                  className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                  animate={{ x: isAutoAdvance ? 20 : 0 }}
-                />
-              </button>
-            </div>
-            
-            {isAutoAdvance && (
-              <div className="flex items-center gap-2">
-                <input 
-                  type="range" 
-                  min="2" 
-                  max="15" 
-                  step="1"
-                  value={autoAdvanceSeconds}
-                  onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
-                  className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-                />
-                <span className="text-[9px] font-mono text-slate-400 w-5">{autoAdvanceSeconds}s</span>
               </div>
-            )}
-          </div>
 
-          <div className="flex items-center justify-center gap-3 md:gap-5">
-            <button 
-              onClick={prevPhrase}
-              disabled={currentPhraseIndex === 0}
-              className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
-            >
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={onTogglePlay}
-              className="w-10 h-10 md:w-14 md:h-14 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
-            >
-              {isPlaying ? <Pause className="w-5 h-5 md:w-7 md:h-7 fill-current" /> : <Play className="w-5 h-5 md:w-7 md:h-7 fill-current ml-1" />}
-            </button>
-            <button 
-              onClick={nextPhrase}
-              disabled={currentPhraseIndex === phrases.length - 1}
-              className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
-            >
-              <SkipForward className="w-5 h-5" />
-            </button>
-          </div>
+              <div className="flex items-center justify-center gap-3 md:gap-5">
+                <button 
+                  onClick={prevPhrase}
+                  disabled={currentPhraseIndex === 0}
+                  className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+                >
+                  <SkipBack className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={onTogglePlay}
+                  className="w-10 h-10 md:w-14 md:h-14 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
+                >
+                  {isPlaying ? <Pause className="w-5 h-5 md:w-7 md:h-7 fill-current" /> : <Play className="w-5 h-5 md:w-7 md:h-7 fill-current ml-1" />}
+                </button>
+                <button 
+                  onClick={nextPhrase}
+                  disabled={currentPhraseIndex === phrases.length - 1}
+                  className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
+                >
+                  <SkipForward className="w-5 h-5" />
+                </button>
+              </div>
 
-          {/* Progress */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              <span>Progresso</span>
-              <span>{currentPhraseIndex + 1} / {phrases.length}</span>
-            </div>
-            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-brand-primary"
-                initial={false}
-                animate={{ width: `${((currentPhraseIndex + 1) / phrases.length) * 100}%` }}
-              />
-            </div>
-          </div>
+              {/* Progress */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                  <span>Progresso</span>
+                  <span>{currentPhraseIndex + 1} / {phrases.length}</span>
+                </div>
+                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-brand-primary"
+                    initial={false}
+                    animate={{ width: `${((currentPhraseIndex + 1) / phrases.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
+import { BibleProjectionScreen, SorteioProjectionScreen } from './SpecialProjections';
 
 interface ProjectedOnlyViewProps {
   song: Song;
@@ -134,6 +135,74 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
       };
     }
   }, [initialSong.id]);
+
+  const isBible = song?.category === 'Bíblia' || song?.collection_id === 'biblia' || song?.id?.startsWith('bible-');
+  const isSorteio = song?.id === 'sorteio-projection' || song?.category === 'sorteio' || song?.collection_id === 'utilitarios';
+
+  const sorteioData = useMemo(() => {
+    if (!isSorteio || !song) return { winner: '1', winners: [] as any[] };
+    let winner = song.lyrics || '1';
+    let winners: any[] = [];
+    try {
+      if (song.author && song.author.startsWith('{')) {
+        const parsed = JSON.parse(song.author);
+        if (parsed.winner !== undefined) winner = String(parsed.winner);
+        if (Array.isArray(parsed.winners)) winners = parsed.winners;
+      }
+    } catch (e) {}
+
+    if (winners.length === 0) {
+      try {
+        const raw = localStorage.getItem('projection_sorteio_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.winner !== undefined) winner = String(parsed.winner);
+          if (Array.isArray(parsed.winners)) winners = parsed.winners;
+        }
+      } catch (e) {}
+    }
+    return { winner, winners };
+  }, [isSorteio, song?.lyrics, song?.author]);
+
+  if (isBible) {
+    return (
+      <div className="fixed inset-0 bg-[#0b0d14] flex flex-col justify-between overflow-hidden group">
+        <BibleProjectionScreen 
+          verseText={song.lyrics} 
+          reference={song.title || song.author || ''} 
+        />
+        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
+          <button 
+            onClick={toggleFullscreen}
+            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
+            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
+          >
+            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSorteio) {
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden group">
+        <SorteioProjectionScreen 
+          winner={sorteioData.winner} 
+          winnersList={sorteioData.winners} 
+        />
+        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
+          <button 
+            onClick={toggleFullscreen}
+            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
+            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
+          >
+            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden group">

@@ -22,12 +22,14 @@ export function getSupabase() {
   if (!envUrl) envUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
   if (!envKey) envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
 
-  const supabaseUrl = (envUrl && envUrl !== '') ? envUrl : 'https://xdwplwqpnsglaitedehu.supabase.co';
-  const supabaseAnonKey = (envKey && envKey !== '') ? envKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd3Bsd3FwbnNnbGFpdGVkZWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NjQ1OTEsImV4cCI6MjA4ODM0MDU5MX0.GupAMmWSDv39aeFwp0QfmYReClfGkz_DUsbAnGNADDY';
-
-  if (!supabaseUrl || !supabaseAnonKey) {
+  // If the user hasn't configured custom environment variables, or if they are pointing to the old deleted project,
+  // we return null to run in offline/local mock mode. This prevents "Failed to fetch" errors on load.
+  if (!envUrl || !envKey || envUrl.includes('xdwplwqpnsglaitedehu')) {
     return null;
   }
+
+  const supabaseUrl = envUrl;
+  const supabaseAnonKey = envKey;
 
   const isStorageAvailable = (() => {
     try {
