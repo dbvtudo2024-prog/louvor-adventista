@@ -550,7 +550,9 @@ export function AdminView({ collections, onSongUpdated }: AdminViewProps) {
     // Check if the new first line is the same as the title to avoid duplication
     const firstLine = rawLines.length > 0 ? rawLines[0] : '';
     const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
-    const firstLineIsTitle = firstLineContent.toLowerCase() === (title || '').trim().toLowerCase();
+    
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9áéíóúâêîôûãõç]/g, '').trim();
+    const firstLineIsTitle = normalize(firstLineContent) === normalize(title || '');
     
     const linesToProcess = firstLineIsTitle ? rawLines.slice(1) : rawLines;
     

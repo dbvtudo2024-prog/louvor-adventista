@@ -289,18 +289,27 @@ function AppContent() {
     let lyrics = selectedSong.lyrics || '';
     
     // Check for custom title timing [T:seconds]
-    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\]/);
+    const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\](.*)/);
     const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1].replace(',', '.')) : 5;
     
-    // Remove the title timing tag if it exists
-    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\]\n?/, '') : lyrics;
+    // Remove the entire first line if it contains the [T:...] tag
+    const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\].*\n?/, '') : lyrics;
     
     const lines = lyricsToParse
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
-    const parsed = lines.map(line => {
+    // Check if the new first line is the same as the title to avoid duplication
+    const firstLine = lines.length > 0 ? lines[0] : '';
+    const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
+    
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9áéíóúâêîôûãõç]/g, '').trim();
+    const firstLineIsTitle = normalize(firstLineContent) === normalize(selectedSong.title || '');
+    
+    const linesToProcess = firstLineIsTitle ? lines.slice(1) : lines;
+    
+    const parsed = linesToProcess.map(line => {
       const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
       return {
         timing: match ? parseFloat(match[1].replace(',', '.')) : 5,
@@ -1238,7 +1247,21 @@ function AppContent() {
                     fontSize === 'sm' ? "text-lg" : fontSize === 'md' ? "text-2xl" : "text-3xl",
                     fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
                   )}>
-                    {selectedSong.lyrics.replace(/\[(?:T:)?\d+(?:[.,]\d+)?\]\s*/g, '')}
+                    {(() => {
+                      let lyrics = selectedSong.lyrics || '';
+                      const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\](.*)/);
+                      const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\].*\n?/, '') : lyrics;
+                      
+                      const lines = lyricsToParse.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                      const firstLine = lines.length > 0 ? lines[0] : '';
+                      const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
+                      
+                      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9áéíóúâêîôûãõç]/g, '').trim();
+                      const firstLineIsTitle = normalize(firstLineContent) === normalize(selectedSong.title || '');
+                      
+                      const finalLines = firstLineIsTitle ? lines.slice(1) : lines;
+                      return finalLines.join('\n').replace(/\[(?:T:)?\d+(?:[.,]\d+)?\]\s*/g, '');
+                    })()}
                   </div>
                 )}
               </div>

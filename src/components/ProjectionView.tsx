@@ -164,7 +164,9 @@ export function ProjectionView({
     // Check if the new first line is the same as the title to avoid duplication
     const firstLine = lines.length > 0 ? lines[0] : '';
     const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
-    const firstLineIsTitle = firstLineContent.toLowerCase() === (song.title || '').trim().toLowerCase();
+    
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9áéíóúâêîôûãõç]/g, '').trim();
+    const firstLineIsTitle = normalize(firstLineContent) === normalize(song.title || '');
     
     const linesToProcess = firstLineIsTitle ? lines.slice(1) : lines;
 
