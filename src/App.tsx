@@ -36,11 +36,13 @@ import {
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSupabase } from './lib/supabase';
-import { Collection, Song } from './types';
+import { Collection, Song, LiturgyCategory } from './types';
 import { MOCK_COLLECTIONS, MOCK_SONGS } from './data';
 import { AdminView } from './components/AdminView';
 import { ProjectionView } from './components/ProjectionView';
 import { ProjectedOnlyView } from './components/ProjectedOnlyView';
+import { SlideEditorModal } from './components/SlideEditorModal';
+import { AlbumDetailView } from './components/AlbumDetailView';
 import { TopBar } from './components/TopBar';
 import { BottomDock, TabType } from './components/BottomDock';
 import { HomeHero } from './components/HomeHero';
@@ -50,6 +52,11 @@ import { BibliaView } from './components/BibliaView';
 import { UtilitariosView } from './components/UtilitariosView';
 import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { MusicEmblem } from './components/MusicEmblem';
+import { useTheme } from './context/ThemeContext';
+import { AtmosphericBackground } from './components/AtmosphericBackground';
+import { broadcastToProjection, openSecondaryProjectionWindow } from './utils/projectionSync';
+import { LiturgiaSidebar } from './components/LiturgiaSidebar';
+import { LiturgiaFloatingView } from './components/LiturgiaFloatingView';
 
 // Error Boundary Component
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: any }> {
@@ -129,13 +136,12 @@ function AppContent() {
   const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin' | 'liturgia' | 'biblia' | 'utilitarios' | 'configuracoes'>('home');
   const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
   const [songs, setSongs] = useState<Song[]>(MOCK_SONGS);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-  const [configError, setConfigError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
-  const [selectedAlbum, setSelectedAlbum] = useState<{ album: string, year: number | string, cover_url?: string } | null>(null);
+  const [selectedAlbum, setSelectedAlbum] = useState<{ album: string, year: number | string, cover_url?: string, songs?: Song[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -152,8 +158,24 @@ function AppContent() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [audio] = useState(new Audio());
   const [isProjecting, setIsProjecting] = useState(false);
-  const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(false);
-  const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(null);
+  const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('project') === 'true';
+    }
+    return false;
+  });
+  const [projectOnlySongId, setProjectOnlySongId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('songId');
+    }
+    return null;
+  });
+  const isLiturgiaDockMode = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('liturgia_dock') === 'true';
+    }
+    return false;
+  }, []);
   const [isSlideMode, setIsSlideMode] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -168,6 +190,81 @@ function AppContent() {
   const [currentTab, setCurrentTab] = useState<TabType>('inicio');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isTelasModalOpen, setIsTelasModalOpen] = useState(false);
+  const [isLiturgiaSidebarCollapsed, setIsLiturgiaSidebarCollapsed] = useState(true);
+  const [editingSongForSlides, setEditingSongForSlides] = useState<Song | null>(null);
+  const { accent, isDarkMode } = useTheme();
+
+  const handlePlaySong = (songToPlay: Song) => {
+    setSelectedSong(songToPlay);
+    setIsPlaying(true);
+    setIsProjecting(true);
+
+    try {
+      localStorage.setItem('projection_current_song', JSON.stringify(songToPlay));
+    } catch (e) {}
+
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: songToPlay,
+      index: 0
+    });
+  };
+
+  const handleSaveSongSlides = async (updatedSong: Song) => {
+    setSongs(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
+    if (selectedSong?.id === updatedSong.id) {
+      setSelectedSong(updatedSong);
+    }
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase
+          .from('songs')
+          .update({
+            lyrics: updatedSong.lyrics,
+            slides: updatedSong.slides
+          })
+          .eq('id', updatedSong.id);
+      } catch (err) {
+        console.warn('Could not persist slides to DB, kept locally:', err);
+      }
+    }
+  };
+
+  const handleAddToLiturgy = (song: Song) => {
+    try {
+      const stored = localStorage.getItem('louvor_liturgia_categories');
+      let categories: LiturgyCategory[] = stored ? JSON.parse(stored) : [];
+      if (categories.length === 0) {
+        categories = [{
+          id: `cat-${Date.now()}`,
+          name: 'Louvor Congregacional',
+          items: []
+        }];
+      }
+      categories[0].items.push({
+        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        title: song.title,
+        durationMin: 5,
+        song: song,
+        completed: false
+      });
+      localStorage.setItem('louvor_liturgia_categories', JSON.stringify(categories));
+      window.dispatchEvent(new Event('liturgia-updated'));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const albumSongs = useMemo(() => {
+    if (!selectedAlbum) return [];
+    if (selectedAlbum.songs && selectedAlbum.songs.length > 0) return selectedAlbum.songs;
+    return songs.filter(s => 
+      (selectedCollection ? s.collection_id === selectedCollection.id : true) &&
+      (s.album_name === selectedAlbum.album || (!s.album_name && selectedAlbum.album === 'Geral')) &&
+      (!selectedAlbum.year || String(s.year || '') === String(selectedAlbum.year || ''))
+    ).sort((a, b) => (a.number || 0) - (b.number || 0));
+  }, [selectedAlbum, songs, selectedCollection]);
 
   const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 10, 130));
   const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 10, 70));
@@ -175,14 +272,14 @@ function AppContent() {
 
   const handleSelectTab = (tab: TabType) => {
     setCurrentTab(tab);
+    setSelectedAlbum(null);
+    setSelectedSong(null);
     if (tab === 'inicio') {
       setView('home');
-      setSelectedCollection(null);
-      setSelectedAlbum(null);
     } else if (tab === 'midia') {
-      if (view !== 'collection' && view !== 'song') {
-        setView('home');
-      }
+      setView('home');
+      setSelectedCollection(null);
+      setSearchQuery('');
     } else if (tab === 'liturgia') {
       setView('liturgia');
     } else if (tab === 'biblia') {
@@ -457,7 +554,7 @@ function AppContent() {
     const supabase = getSupabase();
     
     if (!supabase) {
-      setConfigError(true);
+      // Use standard built-in mock collection & songs gracefully without blocking
       setIsLoading(false);
       return;
     }
@@ -472,7 +569,9 @@ function AppContent() {
         .from('collections')
         .select('*');
       
-      if (colsError) throw colsError;
+      if (colsError) {
+        console.warn('Supabase collections fetch warning (using defaults if needed):', colsError);
+      }
       
       // Create a map of existing collections by ID to ensure uniqueness
       const collectionsMap = new Map<string, Collection>();
@@ -522,33 +621,85 @@ function AppContent() {
 
       const { data: sngs, error: sngsError } = await supabase
         .from('songs')
-        .select('id, collection_id, title, lyrics, audio_url, cover_url, album_name, year, number');
+        .select('*');
       
-      if (sngsError) throw sngsError;
+      if (sngsError) console.warn('Supabase songs fetch error (falling back to cached/mock songs):', sngsError);
+
+      const songsMap = new Map<string, Song>();
+
+      // 1. Add DB songs first (highest priority)
       if (sngs && sngs.length > 0) {
-        // Ensure unique songs by ID
-        const songsMap = new Map<string, Song>();
-        sngs.forEach(song => {
-          // Map old string IDs to UUIDs if necessary
-          const mappedCollectionId = ID_MAPPING[song.collection_id] || song.collection_id;
-          songsMap.set(song.id, { ...song, collection_id: mappedCollectionId });
+        sngs.forEach((song: any) => {
+          const mappedCollectionId = ID_MAPPING[song.collection_id] || song.collection_id || sortedCollections[0]?.id;
+          
+          // Se a coleção não existir no mapa de coleções, cria uma entrada para ela aparecer
+          if (mappedCollectionId && !collectionsMap.has(mappedCollectionId)) {
+            const newCol: Collection = {
+              id: mappedCollectionId,
+              name: song.collection_name || 'Coletânea do Banco',
+              description: 'Músicas sincronizadas do banco de dados',
+              icon: 'music'
+            };
+            collectionsMap.set(mappedCollectionId, newCol);
+          }
+
+          songsMap.set(song.id, { 
+            ...song, 
+            collection_id: mappedCollectionId,
+            lyrics: song.lyrics || '',
+            title: song.title || 'Sem título'
+          });
         });
-        const uniqueSongs = Array.from(songsMap.values());
-        setSongs(uniqueSongs);
-        
-        // Update selectedSong if it's currently being viewed
-        if (selectedSong) {
-          const updated = uniqueSongs.find(s => s.id === selectedSong.id);
-          if (updated) setSelectedSong(updated);
-        }
+        // Atualiza coleções se alguma nova foi adicionada
+        setCollections(Array.from(collectionsMap.values()));
       }
+
+      // Helper to find collection id by keyword
+      const findColId = (keyword: string) => {
+        const found = sortedCollections.find(c => c.name.toLowerCase().includes(keyword.toLowerCase()));
+        return found?.id;
+      };
+
+      const hinarioId = findColId('hinário');
+      const jovensId = findColId('jovens') || findColId('ja');
+      const coletaneasId = findColId('coletânea') || findColId('diversas');
+      const infantisId = findColId('infantil');
+      const doxologiaId = findColId('doxologia');
+
+      // 2. Add mock songs and map them to the proper loaded collection IDs so no collection is ever empty
+      MOCK_SONGS.forEach(mockSong => {
+        let targetColId = mockSong.collection_id;
+        if (mockSong.id.startsWith('ha-') && hinarioId) {
+          targetColId = hinarioId;
+        } else if ((mockSong.id.startsWith('tpe-') || mockSong.id.startsWith('ja-')) && jovensId) {
+          targetColId = jovensId;
+        } else if (mockSong.id.startsWith('col-') && coletaneasId) {
+          targetColId = coletaneasId;
+        } else if (mockSong.id.startsWith('inf-') && infantisId) {
+          targetColId = infantisId;
+        } else if (mockSong.id.startsWith('dox-') && doxologiaId) {
+          targetColId = doxologiaId;
+        }
+
+        // Avoid duplicate by title and collection
+        const exists = Array.from(songsMap.values()).some(
+          s => s.id === mockSong.id || (s.title.toLowerCase() === mockSong.title.toLowerCase() && s.collection_id === targetColId)
+        );
+
+        if (!exists) {
+          songsMap.set(mockSong.id, { ...mockSong, collection_id: targetColId });
+        }
+      });
+
+      const uniqueSongs = Array.from(songsMap.values());
+      setSongs(uniqueSongs);
 
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedSong, isDemoMode]);
+  }, [isDemoMode]);
 
   useEffect(() => {
     fetchData().catch(err => console.error('Error in initial fetchData:', err));
@@ -556,24 +707,48 @@ function AppContent() {
 
   useEffect(() => {
     if (selectedSong?.audio_url) {
-      audio.src = selectedSong.audio_url;
-      if (isPlaying) audio.play().catch(e => console.log('Audio play failed', e));
+      if (audio.src !== selectedSong.audio_url) {
+        audio.src = selectedSong.audio_url;
+      }
+      if (isPlaying) {
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {});
+        }
+      }
     } else {
-      audio.pause();
+      try {
+        audio.pause();
+      } catch (e) {}
       setIsPlaying(false);
     }
   }, [selectedSong]);
 
   useEffect(() => {
     if (isPlaying) {
-      audio.play().catch(e => {
-        console.log('Audio play failed', e);
-        setIsPlaying(false);
-      });
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          setIsPlaying(false);
+        });
+      }
     } else {
-      audio.pause();
+      try {
+        audio.pause();
+      } catch (e) {}
     }
   }, [isPlaying]);
+
+  // Sincroniza música projetada com a tela secundária via broadcast universal
+  useEffect(() => {
+    if (isProjecting && selectedSong) {
+      broadcastToProjection({
+        type: 'PROJECT_SONG',
+        song: selectedSong,
+        index: 0
+      });
+    }
+  }, [isProjecting, selectedSong]);
 
   const handleUpdateSong = async (updatedData: Partial<Song>) => {
     if (!selectedSong) return;
@@ -627,7 +802,49 @@ function AppContent() {
   };
 
   const handleBack = () => {
-    window.history.back();
+    if (isMenuOpen) {
+      setIsMenuOpen(false);
+      return;
+    }
+    if (isProjecting) {
+      setIsProjecting(false);
+      return;
+    }
+    if (selectedAlbum) {
+      setSelectedAlbum(null);
+      return;
+    }
+    if (view === 'song') {
+      if (selectedCollection) {
+        setView('collection');
+        setCurrentTab('midia');
+      } else {
+        setView('home');
+        setCurrentTab('midia');
+      }
+      setSelectedSong(null);
+      return;
+    }
+    if (view === 'collection' || view === 'favorites') {
+      setView('home');
+      setCurrentTab('midia');
+      setSelectedCollection(null);
+      setSelectedAlbum(null);
+      return;
+    }
+    if (view === 'liturgia' || view === 'biblia' || view === 'utilitarios' || view === 'configuracoes' || view === 'admin') {
+      setView('home');
+      setCurrentTab('inicio');
+      return;
+    }
+    if (currentTab !== 'inicio') {
+      setCurrentTab('inicio');
+      setView('home');
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+    }
   };
 
   // Sync view state with browser history
@@ -647,11 +864,16 @@ function AppContent() {
         setSelectedCollection(state.selectedCollection || null);
         setSelectedSong(state.selectedSong || null);
         setSelectedAlbum(state.selectedAlbum || null);
+        if (state.view === 'home') {
+          setCurrentTab(state.currentTab || 'inicio');
+        } else if (state.view === 'collection') {
+          setCurrentTab('midia');
+        } else if (state.view === 'liturgia' || state.view === 'biblia' || state.view === 'utilitarios' || state.view === 'configuracoes') {
+          setCurrentTab(state.view);
+        }
       } else {
         setView('home');
-        setSelectedCollection(null);
-        setSelectedSong(null);
-        setSelectedAlbum(null);
+        setCurrentTab('inicio');
       }
       
       setIsMenuOpen(false);
@@ -670,28 +892,57 @@ function AppContent() {
     setIsSlideMode(false);
     setIsMenuOpen(false);
 
+    let targetTab: TabType = currentTab;
     if (newView === 'home') {
+      targetTab = 'inicio';
       setCurrentTab('inicio');
     } else if (newView === 'collection') {
+      targetTab = 'midia';
       setCurrentTab('midia');
     } else if (newView === 'liturgia') {
+      targetTab = 'liturgia';
       setCurrentTab('liturgia');
     } else if (newView === 'biblia') {
+      targetTab = 'biblia';
       setCurrentTab('biblia');
     } else if (newView === 'utilitarios') {
+      targetTab = 'utilitarios';
       setCurrentTab('utilitarios');
     } else if (newView === 'configuracoes') {
+      targetTab = 'configuracoes';
       setCurrentTab('configuracoes');
     }
     
+    // Auto-resolve collection if navigating to song without collection
+    let resolvedCollection = data?.collection || selectedCollection;
+    if (newView === 'song' && data?.song && (!resolvedCollection || resolvedCollection.id !== data.song.collection_id)) {
+      const match = collections.find(c => c.id === data.song.collection_id);
+      if (match) resolvedCollection = match;
+    }
+
+    if (newView === 'song' && data?.song) {
+      handlePlaySong(data.song);
+      return;
+    }
+
+    if (data?.album) {
+      setSelectedAlbum(data.album);
+      return;
+    }
+
     const state = { 
       view: newView, 
-      selectedCollection: data?.collection || (newView === 'home' ? null : selectedCollection),
-      selectedSong: data?.song || null,
+      currentTab: targetTab,
+      selectedCollection: resolvedCollection,
+      selectedSong: data?.song || (newView === 'song' ? selectedSong : null),
       selectedAlbum: data?.album || (newView === 'song' ? selectedAlbum : null)
     };
     
-    window.history.pushState(state, '', '');
+    try {
+      window.history.pushState(state, '', '');
+    } catch (e) {
+      // Safe fallback in sandboxed iframes
+    }
     
     setView(newView);
     setSelectedCollection(state.selectedCollection);
@@ -702,17 +953,18 @@ function AppContent() {
   const albums = useMemo(() => {
     if (!selectedCollection) return [];
     const name = selectedCollection.name.toLowerCase();
-    const id = selectedCollection.id.toLowerCase();
-    const isAlbumCollection = id === 'a1b2c3d4-e5f6-4890-b234-567890abcdef' || name.includes('jovens') || name.includes('ja') || id === '98765432-10fe-4cba-b876-543210fedcba' || name.includes('coletânea') || id === '12345678-90ab-4def-b234-567890abcdef' || name.includes('doxologia');
+    // Only CDs Jovens (JA) has multiple albums/CDs by year
+    const isAlbumCollection = name.includes('jovens') || name.includes('ja');
     
     if (!isAlbumCollection) return [];
 
     const grouped: Record<string, { album: string, year: number | string, cover_url?: string, songs: Song[] }> = {};
     songs.filter(s => s.collection_id === selectedCollection.id).forEach(song => {
-      const key = `${song.album_name || 'Desconhecido'}-${song.year || ''}`;
+      const albumName = song.album_name || 'Geral';
+      const key = `${albumName}-${song.year || ''}`;
       if (!grouped[key]) {
         grouped[key] = { 
-          album: song.album_name || 'Desconhecido', 
+          album: albumName, 
           year: song.year || '', 
           cover_url: song.cover_url,
           songs: [] 
@@ -743,66 +995,74 @@ function AppContent() {
     return <RemoteReceiverView roomId={remoteRoomId} />;
   }
 
-  if (isProjectOnlyMode && projectOnlySongId) {
-    const song = songs.find(s => s.id === projectOnlySongId);
-    if (song) return <ProjectedOnlyView song={song} />;
-    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Hino não encontrado.</div>;
+  if (isLiturgiaDockMode) {
+    return <LiturgiaFloatingView />;
   }
 
-  if (configError) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-brand-warm p-8 max-w-md mx-auto text-center">
-        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mb-6">
-          <AlertTriangle className="w-10 h-10 text-amber-600" />
-        </div>
-        <h2 className="text-2xl font-serif font-bold text-brand-primary mb-4">Configuração Necessária</h2>
-        <p className="text-slate-600 mb-8 leading-relaxed">
-          Para conectar o aplicativo ao seu banco de dados, você precisa adicionar as chaves do Supabase nos <strong>Secrets</strong> do AI Studio.
-        </p>
-        
-        <div className="w-full space-y-4 text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Variável 1</p>
-            <code className="text-sm font-mono text-brand-secondary break-all">VITE_SUPABASE_URL</code>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Variável 2</p>
-            <code className="text-sm font-mono text-brand-secondary break-all">VITE_SUPABASE_ANON_KEY</code>
-          </div>
-        </div>
+  if (isProjectOnlyMode) {
+    let song = projectOnlySongId ? (songs.find(s => s.id === projectOnlySongId) || null) : null;
+    
+    if (!song && projectOnlySongId) {
+      try {
+        const raw = localStorage.getItem('projection_current_song');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (parsed.id === projectOnlySongId || parsed.title)) {
+            song = parsed;
+          }
+        }
+      } catch (e) {}
+    }
 
-        <p className="text-sm text-slate-400 italic mb-6">
-          Após adicionar as chaves, o aplicativo carregará automaticamente.
-        </p>
+    if (!song && projectOnlySongId) {
+      try {
+        const raw = localStorage.getItem('adventist_projection_payload');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.song && (parsed.song.id === projectOnlySongId || parsed.song.title)) {
+            song = parsed.song;
+          }
+        }
+      } catch (e) {}
+    }
 
-        <button
-          onClick={() => {
-            setIsDemoMode(true);
-            setConfigError(false);
-            setIsLoading(false);
-          }}
-          className="w-full py-3 px-6 bg-brand-primary hover:bg-brand-primary/90 text-white font-serif font-bold rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Play className="w-5 h-5" />
-          Usar Modo de Demonstração
-        </button>
-      </div>
-    );
+    if (!song && projectOnlySongId) {
+      song = MOCK_SONGS.find(s => s.id === projectOnlySongId) || null;
+    }
+
+    if (!song && projectOnlySongId === 'sorteio-projection') {
+      let winner = '1';
+      let winners: any[] = [];
+      try {
+        const raw = localStorage.getItem('projection_sorteio_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.winner !== undefined) winner = String(parsed.winner);
+          if (Array.isArray(parsed.winners)) winners = parsed.winners;
+        }
+      } catch (e) {}
+
+      song = {
+        id: 'sorteio-projection',
+        collection_id: 'utilitarios',
+        category: 'sorteio',
+        title: 'Sorteio',
+        lyrics: winner,
+        author: JSON.stringify({ winner, winners })
+      };
+    }
+    return <ProjectedOnlyView song={song} />;
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121214] text-white p-6 select-none">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8"
-        >
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121214] text-white p-6 select-none relative overflow-hidden">
+        <AtmosphericBackground />
+        <div className="mb-8 z-10">
           <MusicEmblem size={120} />
-        </motion.div>
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-7 h-7 text-amber-400 animate-spin" />
+        </div>
+        <div className="flex flex-col items-center gap-3 z-10">
+          <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent.hex }} />
           <p className="text-neutral-300 font-sans text-sm tracking-wide">Carregando louvores...</p>
         </div>
       </div>
@@ -811,9 +1071,20 @@ function AppContent() {
 
   return (
     <div 
-      style={{ zoom: `${zoomLevel}%` }}
-      className="h-screen flex flex-col w-full bg-[#121214] text-white relative overflow-hidden transition-colors duration-500"
+      className={cn(
+        "h-screen flex flex-col w-full relative overflow-hidden transition-colors duration-500",
+        isDarkMode ? "text-white" : "text-neutral-900"
+      )}
+      style={zoomLevel !== 100 ? {
+        transform: `scale(${zoomLevel / 100})`,
+        transformOrigin: 'top center',
+        width: `${100 / (zoomLevel / 100)}%`,
+        height: `${100 / (zoomLevel / 100)}%`,
+      } : undefined}
     >
+      {/* Dynamic Background Atmosphere responding to theme accent and dark/light mode */}
+      <AtmosphericBackground />
+
       {/* Top Navigation Bar */}
       <TopBar
         zoomLevel={zoomLevel}
@@ -822,63 +1093,55 @@ function AppContent() {
         onZoomReset={handleZoomReset}
         onOpenTelas={() => setIsTelasModalOpen(true)}
         onOpenProjectOnly={() => {
-          const url = `${window.location.origin}/?project=true${selectedSong ? `&songId=${selectedSong.id}` : ''}`;
-          window.open(url, '_blank', 'width=1280,height=720');
+          openSecondaryProjectionWindow(selectedSong?.id);
         }}
         onToggleProjection={() => {
-          if (selectedSong) {
-            setIsProjecting(true);
-          } else if (songs.length > 0) {
-            setSelectedSong(songs[0]);
-            setIsProjecting(true);
-          } else {
-            setIsTelasModalOpen(true);
-          }
+          openSecondaryProjectionWindow(selectedSong?.id);
         }}
-        onOpenMenu={() => setIsMenuOpen(true)}
-        isOnline={isOnline}
-        canGoBack={view !== 'home' || currentTab !== 'inicio'}
-        onBack={() => {
-          if (view === 'liturgia' || view === 'biblia' || view === 'utilitarios' || view === 'configuracoes') {
-            handleSelectTab('inicio');
-          } else if (view !== 'home') {
-            handleBack();
-          } else {
-            setCurrentTab('inicio');
-          }
-        }}
-        title={
-          view === 'home' 
-            ? (currentTab === 'midia' ? 'Central de Mídia' : 'Louvor Adventista') 
-            : view === 'liturgia' ? 'Liturgia do Culto'
-            : view === 'biblia' ? 'Bíblia Sagrada'
-            : view === 'utilitarios' ? 'Utilitários'
-            : view === 'configuracoes' ? 'Configurações'
-            : view === 'collection' ? (selectedAlbum ? selectedAlbum.album : selectedCollection?.name) 
-            : view === 'favorites' ? 'Favoritos' 
-            : view === 'song' ? (selectedSong?.title || 'Música') 
-            : view === 'admin' ? 'Administração' : 'Louvor'
-        }
       />
 
       {/* Main Content */}
       <main 
         ref={mainRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 w-full overflow-hidden pb-16 sm:pb-20"
+        className={cn(
+          "flex-1 min-h-0 w-full overflow-hidden pb-16 sm:pb-20 relative z-10 transition-all duration-300",
+          currentTab !== 'liturgia' && (!isLiturgiaSidebarCollapsed ? "md:pr-72 lg:pr-80" : "pr-0")
+        )}
       >
-        <AnimatePresence mode="wait">
-          {view === 'home' && (
-            <motion.div
-              key={currentTab}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="w-full h-full overflow-hidden"
-            >
-              {currentTab === 'inicio' ? (
-                <HomeHero />
-              ) : (
+        {(view === 'collection' || (view === 'home' && currentTab === 'midia')) && selectedAlbum ? (
+          <AlbumDetailView 
+            albumName={selectedAlbum.album}
+            year={selectedAlbum.year}
+            coverUrl={selectedAlbum.cover_url}
+            songs={albumSongs}
+            currentPlayingSongId={selectedSong?.id}
+            isPlaying={isPlaying}
+            onBack={() => setSelectedAlbum(null)}
+            onPlaySong={(song) => handlePlaySong(song)}
+            onPlayAll={() => {
+              if (albumSongs.length > 0) {
+                handlePlaySong(albumSongs[0]);
+              }
+            }}
+            onOpenSlideEditor={(song) => setEditingSongForSlides(song)}
+            onAddToLiturgy={handleAddToLiturgy}
+            onDeleteSong={(songId) => {
+              setSongs(prev => prev.filter(s => s.id !== songId));
+            }}
+            onToggleFavorite={toggleFavorite}
+            favorites={favorites}
+          />
+        ) : (
+          <>
+            {view === 'home' && (
+          <div
+            key={currentTab}
+            className="w-full h-full overflow-hidden"
+          >
+            {currentTab === 'inicio' ? (
+              <HomeHero />
+            ) : (
                 /* Media Center Tab */
                 <div className="p-6 max-w-7xl mx-auto space-y-6 h-full overflow-y-auto custom-scrollbar">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
@@ -893,7 +1156,8 @@ function AppContent() {
                         placeholder="Pesquisar por título, letra ou número..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400"
+                        className="w-full pl-10 pr-4 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none transition-colors"
+                        style={{ borderColor: searchQuery ? accent.hex : undefined }}
                       />
                     </div>
                   </div>
@@ -906,30 +1170,47 @@ function AppContent() {
                       <div className="space-y-2">
                         {filteredSongs.length > 0 ? (
                           filteredSongs.map((song) => (
-                            <button
+                            <div
                               key={song.id}
                               onClick={() => navigateTo('song', { song })}
-                              className="w-full flex items-center gap-4 p-3.5 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 text-left transition-all group"
+                              className="w-full flex items-center gap-4 p-3.5 bg-neutral-900/80 hover:bg-neutral-800/90 rounded-2xl border border-neutral-800 text-left transition-all group cursor-pointer"
                             >
-                              <div className="w-10 h-10 rounded-xl bg-neutral-800 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+                              <div 
+                                className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center font-bold text-xs shrink-0"
+                                style={{ color: accent.hex }}
+                              >
                                 {song.number || '♪'}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <span className="block font-bold text-white group-hover:text-amber-300 text-sm truncate">
+                                <span className="block font-bold text-white group-hover:text-white text-sm truncate">
                                   {song.title}
                                 </span>
                                 <span className="text-[10px] text-neutral-400 uppercase font-semibold">
                                   {collections.find(c => c.id === song.collection_id)?.name}
                                 </span>
                               </div>
+
+                              {/* Play directly to Projection View (Image 3) */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlaySong(song);
+                                }}
+                                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white text-white hover:text-neutral-950 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+                                title="Tocar e Projetar (Tela do Utilizador)"
+                              >
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
+                              </button>
+
                               <Heart 
-                                className={cn("w-4 h-4 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600")}
+                                className={cn("w-4 h-4 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600 hover:text-neutral-300")}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggleFavorite(song.id);
                                 }}
                               />
-                            </button>
+                            </div>
                           ))
                         ) : (
                           <div className="text-center py-12 text-neutral-500 text-xs">
@@ -943,63 +1224,112 @@ function AppContent() {
                       {collections.map((collection) => {
                         const Icon = ICON_MAP[collection.icon] || Music;
                         return (
-                          <motion.button
+                          <button
                             key={`collection-${collection.id}`}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
                             onClick={() => {
                               navigateTo('collection', { collection });
                             }}
-                            className="flex flex-col items-center justify-center p-6 bg-neutral-900/80 hover:bg-neutral-800 rounded-3xl border border-neutral-800 hover:border-amber-500/40 group transition-all text-center"
+                            className="flex flex-col items-center justify-center p-6 bg-neutral-900/80 hover:bg-neutral-800 rounded-3xl border border-neutral-800 group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] text-center cursor-pointer"
                           >
-                            <div className="w-16 h-16 rounded-2xl bg-neutral-800 group-hover:bg-amber-500 group-hover:text-neutral-950 flex items-center justify-center mb-4 text-amber-400 transition-colors shadow-inner">
+                            <div 
+                              className="w-16 h-16 rounded-2xl bg-neutral-800 flex items-center justify-center mb-4 transition-colors shadow-inner"
+                              style={{ color: accent.hex }}
+                            >
                               <Icon className="w-8 h-8" />
                             </div>
-                            <span className="text-sm font-bold text-white group-hover:text-amber-300 leading-tight">
+                            <span className="text-sm font-bold text-white leading-tight">
                               {collection.name}
                             </span>
                             <span className="text-[10px] text-neutral-500 mt-1 font-semibold uppercase tracking-wider">
                               Abrir Coletânea
                             </span>
-                          </motion.button>
+                          </button>
                         );
                       })}
                     </div>
                   )}
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
 
           {(view === 'collection' || view === 'favorites') && (
-            <motion.div
+            <div
               key="list"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="w-full h-full overflow-y-auto custom-scrollbar p-6 space-y-4 max-w-7xl mx-auto"
+              className="w-full h-full overflow-y-auto custom-scrollbar p-6 space-y-6 max-w-7xl mx-auto"
             >
-              <div className="relative mb-6">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar hinos..."
-                  className="w-full pl-12 pr-4 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 shadow-sm outline-none focus:border-amber-400"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+              {/* In-page collection header with back button, icon, title, and count */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setView('home');
+                      setCurrentTab('midia');
+                      setSelectedCollection(null);
+                      setSelectedAlbum(null);
+                      setSearchQuery('');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95 shrink-0 shadow-sm"
+                    title="Voltar para Central de Mídia"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Voltar</span>
+                  </button>
+
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center shrink-0 shadow-inner"
+                      style={{ color: accent.hex }}
+                    >
+                      {view === 'favorites' ? (
+                        <Heart className="w-5 h-5 fill-current text-red-500" />
+                      ) : (
+                        (() => {
+                          const IconComp = ICON_MAP[selectedCollection?.icon || 'music'] || Music;
+                          return <IconComp className="w-5 h-5" />;
+                        })()
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white tracking-tight">
+                        {view === 'favorites' ? 'Favoritos' : selectedCollection?.name || 'Coletânea'}
+                      </h2>
+                      <p className="text-xs text-neutral-400">
+                        {filteredSongs.length} {filteredSongs.length === 1 ? 'louvor' : 'louvores'} {view === 'favorites' ? 'favoritados' : 'disponíveis'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por título, letra ou número..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-8 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none transition-colors"
+                    style={{ borderColor: searchQuery ? accent.hex : undefined }}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {view === 'collection' && albums.length > 0 && !searchQuery ? (
                 /* Album Grid (Image 2 Style) */
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                   {albums.map((album, idx) => (
-                    <motion.button
+                    <button
                       key={`album-${album.album}-${album.year}-${idx}`}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                       onClick={() => navigateTo('collection', { album })}
-                      className="flex flex-col gap-1.5"
+                      className="flex flex-col gap-1.5 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-left"
                     >
                       <div className="aspect-square bg-neutral-900 rounded-xl overflow-hidden shadow-md border border-neutral-800 flex items-center justify-center relative group">
                         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-50" />
@@ -1012,7 +1342,10 @@ function AppContent() {
                           />
                         ) : album.album !== 'Desconhecido' ? (
                           <div className="absolute inset-0 flex items-center justify-center p-2 bg-neutral-800/60">
-                            <span className="text-[10px] font-bold text-amber-300 text-center leading-tight drop-shadow-md uppercase tracking-tighter">
+                            <span 
+                              className="text-[10px] font-bold text-center leading-tight drop-shadow-md uppercase tracking-tighter"
+                              style={{ color: accent.hex }}
+                            >
                               {album.album}
                             </span>
                           </div>
@@ -1021,14 +1354,17 @@ function AppContent() {
                         )}
                       </div>
                       <div className="bg-neutral-900 rounded-lg py-1 shadow-sm border border-neutral-800 flex flex-col items-center px-1">
-                        <span className="text-[10px] font-bold text-amber-400 text-center block tracking-tighter truncate w-full">
+                        <span 
+                          className="text-[10px] font-bold text-center block tracking-tighter truncate w-full"
+                          style={{ color: accent.hex }}
+                        >
                           {album.album}
                         </span>
                         <span className="text-[8px] font-medium text-neutral-400 text-center block tracking-tighter">
                           {album.year || 'S/ Ano'}
                         </span>
                       </div>
-                    </motion.button>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1036,27 +1372,44 @@ function AppContent() {
                 <div className="space-y-2">
                   {filteredSongs.length > 0 ? (
                     filteredSongs.map((song) => (
-                      <button
+                      <div
                         key={song.id}
                         onClick={() => {
                           navigateTo('song', { song });
                         }}
-                        className="w-full flex items-center gap-4 p-4 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 transition-all text-left group"
+                        className="w-full flex items-center gap-4 p-4 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 transition-all text-left group cursor-pointer"
                       >
-                        <span className="text-sm font-bold text-amber-400 w-8 font-mono">
+                        <span 
+                          className="text-sm font-bold w-8 font-mono"
+                          style={{ color: accent.hex }}
+                        >
                           {song.number || '•'}
                         </span>
-                        <span className="flex-1 font-bold text-white group-hover:text-amber-300 transition-colors text-sm truncate">
+                        <span className="flex-1 font-bold text-white text-sm truncate">
                           {song.title}
                         </span>
+
+                        {/* Direct Play to Projection View */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePlaySong(song);
+                          }}
+                          className="w-9 h-9 rounded-full bg-white/10 hover:bg-white text-white hover:text-neutral-950 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+                          title="Tocar e Projetar (Tela do Utilizador)"
+                        >
+                          <Play className="w-4 h-4 fill-current ml-0.5" />
+                        </button>
+
                         <Heart 
-                          className={cn("w-5 h-5 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600")}
+                          className={cn("w-5 h-5 transition-colors", favorites.includes(song.id) ? "fill-red-500 text-red-500" : "text-neutral-600 hover:text-neutral-300")}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleFavorite(song.id);
                           }}
                         />
-                      </button>
+                      </div>
                     ))
                   ) : (
                     <div className="text-center py-12 text-neutral-500 text-xs">
@@ -1065,112 +1418,37 @@ function AppContent() {
                   )}
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
 
-          {/* Album Modal */}
-          <AnimatePresence>
-            {selectedAlbum && view === 'collection' && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm p-4"
-                onClick={() => setSelectedAlbum(null)}
-              >
-                <motion.div
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                  className="w-full max-w-md bg-white rounded-t-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="relative">
-                    {selectedAlbum.cover_url && (
-                      <div className="w-full h-48 overflow-hidden">
-                        <img 
-                          src={selectedAlbum.cover_url} 
-                          alt={selectedAlbum.album}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                      </div>
-                    )}
-                    <div className={cn(
-                      "p-6 border-b border-slate-100 flex items-center justify-between",
-                      selectedAlbum.cover_url ? "absolute bottom-0 left-0 right-0 bg-transparent border-none" : "bg-slate-50/50"
-                    )}>
-                      <div className="flex flex-col">
-                        <h3 className={cn(
-                          "text-xl font-serif font-bold",
-                          selectedAlbum.cover_url ? "text-white drop-shadow-md" : "text-brand-primary"
-                        )}>
-                          {selectedAlbum.album}
-                        </h3>
-                        <span className={cn(
-                          "text-xs font-bold uppercase tracking-widest",
-                          selectedAlbum.cover_url ? "text-white/80 drop-shadow-md" : "text-sky-500"
-                        )}>
-                          Ano: {selectedAlbum.year}
-                        </span>
-                      </div>
-                      <button 
-                        onClick={handleBack}
-                        className={cn(
-                          "w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-colors",
-                          selectedAlbum.cover_url 
-                            ? "bg-white/20 backdrop-blur-md border-white/30 text-white hover:bg-white/40" 
-                            : "bg-white border-slate-100 text-slate-400 hover:text-brand-primary"
-                        )}
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-white pb-10">
-                    {songs
-                      .filter(s => s.collection_id === selectedCollection?.id && s.album_name === selectedAlbum.album && String(s.year) === String(selectedAlbum.year))
-                      .sort((a, b) => (a.number || 0) - (b.number || 0))
-                      .map((song) => (
-                        <button
-                          key={song.id}
-                          onClick={() => {
-                            setSelectedSong(song);
-                            setView('song');
-                            // We don't close the album modal here so user can go back to it
-                            // Actually, usually you close it or keep it in background.
-                            // Let's close it to avoid stack of modals.
-                            setSelectedAlbum(null);
-                          }}
-                          className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-sky-50 transition-all text-left group border border-transparent hover:border-sky-100"
-                        >
-                          <span className="text-xs font-bold text-sky-400 w-6">
-                            {song.number?.toString().padStart(2, '0') || '•'}
-                          </span>
-                          <span className="flex-1 font-bold text-brand-primary group-hover:text-sky-600 transition-colors">
-                            {song.title}
-                          </span>
-                          <Play className="w-4 h-4 text-sky-300 opacity-0 group-hover:opacity-100 transition-all" />
-                        </button>
-                      ))}
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {view === 'song' && selectedSong && (
-            <motion.div
+            <div
               key="song"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
               className="w-full h-full overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col items-center"
             >
               <div className="w-full max-w-prose space-y-8">
+                {/* Back button to return to collection or media center */}
+                <div className="w-full flex items-center justify-between pb-4 border-b border-neutral-800">
+                  <button
+                    onClick={() => {
+                      if (selectedCollection) {
+                        setView('collection');
+                      } else {
+                        setView('home');
+                        setCurrentTab('midia');
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95 shadow-sm"
+                    title="Voltar para a lista"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Voltar</span>
+                  </button>
+                  <span className="text-xs text-neutral-400 font-medium">
+                    {selectedCollection?.name || 'Louvor'}
+                  </span>
+                </div>
+
                 {/* Song Player Controls & Favorite */}
                 <div className="flex items-center gap-4 w-full">
                   <div className="flex-1 bg-neutral-900/90 rounded-2xl p-4 shadow-xl border border-neutral-800 flex flex-col gap-3 relative overflow-hidden">
@@ -1187,31 +1465,23 @@ function AppContent() {
                       <div className="flex items-center gap-2 shrink-0">
                         <button 
                           onClick={() => {
-                            if (!isPlaying && !isProjecting) {
-                              const shouldProject = window.confirm("Deseja projetar a letra também?");
-                              if (shouldProject) setIsProjecting(true);
-                            }
                             setIsPlaying(!isPlaying);
+                            setIsProjecting(true);
                           }}
-                          disabled={!selectedSong.audio_url}
-                          className={cn(
-                            "w-10 h-10 rounded-full text-neutral-950 shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95",
-                            selectedSong.audio_url ? "bg-amber-400 hover:bg-amber-300" : "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                          )}
-                          title={isPlaying ? "Pausar" : "Tocar"}
+                          className="w-10 h-10 rounded-full text-neutral-950 shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95 cursor-pointer"
+                          style={{ backgroundColor: accent.hex }}
+                          title={isPlaying ? "Pausar" : "Tocar e Projetar (Tela do Utilizador)"}
                         >
                           {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
                         </button>
                         <button 
                           onClick={() => {
-                            if (!isProjecting && !isPlaying && selectedSong.audio_url) {
-                              const shouldPlay = window.confirm("Deseja tocar o áudio também?");
-                              if (shouldPlay) setIsPlaying(true);
-                            }
+                            setIsPlaying(true);
                             setIsProjecting(true);
                           }}
-                          className="w-10 h-10 rounded-full bg-neutral-800 text-neutral-300 hover:text-amber-400 shadow-sm flex items-center justify-center hover:bg-neutral-700 transition-all active:scale-95"
-                          title="Projetar Letra"
+                          className="w-10 h-10 rounded-full bg-neutral-800 text-neutral-300 shadow-sm flex items-center justify-center hover:bg-neutral-700 transition-all active:scale-95 cursor-pointer"
+                          style={{ color: accent.hex }}
+                          title="Projetar Letra (Tela do Utilizador)"
                         >
                           <Monitor className="w-5 h-5" />
                         </button>
@@ -1230,7 +1500,8 @@ function AppContent() {
                         }}
                       >
                         <motion.div 
-                          className="h-full bg-amber-400 rounded-full"
+                          className="h-full rounded-full"
+                          style={{ backgroundColor: accent.hex }}
                           initial={false}
                           animate={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
                           transition={{ type: "spring", bounce: 0, duration: 0.2 }}
@@ -1255,7 +1526,10 @@ function AppContent() {
                 <div className="text-center space-y-3">
                   <div className="flex flex-col items-center gap-1">
                     {selectedSong.number && (
-                      <span className="text-amber-400 font-mono font-bold tracking-widest uppercase text-sm">
+                      <span 
+                        className="font-mono font-bold tracking-widest uppercase text-sm"
+                        style={{ color: accent.hex }}
+                      >
                         Nº {selectedSong.number.toString().padStart(2, '0')}
                       </span>
                     )}
@@ -1283,9 +1557,10 @@ function AppContent() {
                       setCurrentSlideIndex(0);
                     }}
                     className={cn(
-                      "flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest transition-all",
-                      isSlideMode ? "bg-amber-400 text-neutral-950 shadow-md" : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                      "flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest transition-all cursor-pointer",
+                      isSlideMode ? "text-neutral-950 shadow-md" : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
                     )}
+                    style={isSlideMode ? { backgroundColor: accent.hex } : undefined}
                   >
                     <Monitor className="w-4 h-4" />
                     {isSlideMode ? 'Sair do Modo Slides' : 'Modo Slides'}
@@ -1293,7 +1568,8 @@ function AppContent() {
                   {isSlideMode && remoteRoomId && (
                     <button 
                       onClick={() => setShowRemoteInfo(true)}
-                      className="p-2.5 bg-amber-400/10 text-amber-400 rounded-full hover:bg-amber-400/20 transition-all border border-amber-400/30"
+                      className="p-2.5 rounded-full transition-all border"
+                      style={{ backgroundColor: `${accent.hex}15`, borderColor: `${accent.hex}40`, color: accent.hex }}
                       title="Projetar na TV"
                     >
                       <Tv className="w-5 h-5" />
@@ -1309,8 +1585,9 @@ function AppContent() {
                           key={idx} 
                           className={cn(
                             "h-1.5 rounded-full transition-all",
-                            idx === currentSlideIndex ? "w-8 bg-amber-400" : "w-2 bg-neutral-700"
+                            idx === currentSlideIndex ? "w-8" : "w-2 bg-neutral-700"
                           )}
+                          style={idx === currentSlideIndex ? { backgroundColor: accent.hex } : undefined}
                         />
                       ))}
                     </div>
@@ -1371,7 +1648,7 @@ function AppContent() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           )}
 
           {view === 'admin' && (user?.email === 'ronaldosonic@gmail.com' || user?.email === 'mush157s12@gmail.com') && (
@@ -1383,12 +1660,9 @@ function AppContent() {
           )}
 
           {view === 'liturgia' && (
-            <motion.div
+            <div
               key="liturgia-view"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="w-full h-full overflow-hidden"
+              className="w-full h-full min-h-0 flex flex-col"
             >
               <LiturgiaView
                 songs={songs}
@@ -1396,63 +1670,98 @@ function AppContent() {
                 onProjectSong={(song) => {
                   setSelectedSong(song);
                   setIsProjecting(true);
+                  broadcastToProjection({
+                    type: 'PROJECT_SONG',
+                    song,
+                    index: 0
+                  });
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
-            </motion.div>
+            </div>
           )}
 
           {view === 'biblia' && (
-            <motion.div
+            <div
               key="biblia-view"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="w-full h-full overflow-hidden"
+              className="w-full h-full min-h-0 flex flex-col"
             >
               <BibliaView
                 onProjectVerse={(verseSong) => {
                   setSelectedSong(verseSong);
-                  setIsProjecting(true);
+                  // Na Bíblia não precisa de tela do utilizador (ProjectionView) - mantém o operador na tela da Bíblia!
+                  try {
+                    localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
+                    localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
+                  } catch (e) {}
+                  broadcastToProjection({
+                    type: 'PROJECT_SONG',
+                    song: verseSong,
+                    index: 0
+                  });
+                  openSecondaryProjectionWindow(verseSong);
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
-            </motion.div>
+            </div>
           )}
 
           {view === 'utilitarios' && (
-            <motion.div
+            <div
               key="utilitarios-view"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="w-full h-full overflow-hidden"
+              className="w-full h-full min-h-0 flex flex-col"
             >
               <UtilitariosView
+                songs={songs}
+                onOpenSlideEditor={(song) => setEditingSongForSlides(song)}
+                onSaveSongSlides={handleSaveSongSlides}
                 onProjectContent={(utilitySong) => {
                   setSelectedSong(utilitySong);
                   setIsProjecting(true);
+                  try {
+                    localStorage.setItem('projection_current_song', JSON.stringify(utilitySong));
+                  } catch (e) {}
+                  broadcastToProjection({
+                    type: 'PROJECT_SONG',
+                    song: utilitySong,
+                    index: 0
+                  });
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
-            </motion.div>
+            </div>
           )}
 
           {view === 'configuracoes' && (
-            <motion.div
+            <div
               key="configuracoes-view"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="w-full h-full overflow-hidden"
+              className="w-full h-full min-h-0 flex flex-col"
             >
               <ConfiguracoesView
                 onBackToHome={() => handleSelectTab('inicio')}
               />
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
+          </>
+        )}
       </main>
+
+      {/* Quadro da Liturgia (Atalho) em todas as telas do lado direito (Imagem 1) */}
+      {currentTab !== 'liturgia' && (
+        <LiturgiaSidebar
+          onOpenLiturgiaFull={() => handleSelectTab('liturgia')}
+          isCollapsed={isLiturgiaSidebarCollapsed}
+          onToggleCollapse={() => setIsLiturgiaSidebarCollapsed(prev => !prev)}
+          onProjectSong={(song) => {
+            broadcastToProjection({
+              type: 'PROJECT_SONG',
+              song,
+              index: 0
+            });
+            openSecondaryProjectionWindow(song.id);
+          }}
+        />
+      )}
 
       {/* Bottom Navigation Dock matching Reference Image */}
       <BottomDock
@@ -1473,7 +1782,7 @@ function AppContent() {
           }
         }}
         onOpenProjectOnly={(targetScreen) => {
-          const url = `${window.location.origin}/?project=true${selectedSong ? `&songId=${selectedSong.id}` : ''}`;
+          const url = `${window.location.origin}/?project=true`;
           const left = targetScreen?.left ?? window.screen.availWidth ?? 1920;
           const top = targetScreen?.top ?? 0;
           const width = targetScreen?.width ?? 1920;
@@ -1525,13 +1834,16 @@ function AppContent() {
               </div>
 
               {!isOnline && (
-                <div className="mx-0 mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 rounded-lg">
-                    <WifiOff className="w-4 h-4 text-amber-400" />
+                <div 
+                  className="mx-0 mb-6 p-3 rounded-xl flex items-center gap-3 border"
+                  style={{ backgroundColor: `${accent.hex}15`, borderColor: `${accent.hex}30` }}
+                >
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: `${accent.hex}25` }}>
+                    <WifiOff className="w-4 h-4" style={{ color: accent.hex }} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-amber-300">Modo Offline</p>
-                    <p className="text-[10px] text-amber-400/80">Acesso limitado a hinos já carregados.</p>
+                    <p className="text-xs font-bold" style={{ color: accent.hex }}>Modo Offline</p>
+                    <p className="text-[10px] text-neutral-400">Acesso limitado a hinos já carregados.</p>
                   </div>
                 </div>
               )}
@@ -1548,14 +1860,14 @@ function AppContent() {
                     >
                       <button 
                         onClick={() => { setIsMenuOpen(false); navigateTo('configuracoes'); }}
-                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
+                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-neutral-800"
                       >
                         <Settings className="w-5 h-5" />
                         <span className="font-medium text-sm">Configurações</span>
                       </button>
                       <button 
                         onClick={() => setMenuView('audio')}
-                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
+                        className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-neutral-800"
                       >
                         <Volume2 className="w-5 h-5" />
                         <span className="font-medium text-sm">Ajustes de Áudio</span>
@@ -1563,7 +1875,7 @@ function AppContent() {
                       {(user?.email === 'ronaldosonic@gmail.com' || user?.email === 'mush157s12@gmail.com') && (
                         <button 
                           onClick={() => { setMenuView('main'); setIsMenuOpen(false); navigateTo('admin'); }}
-                          className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-amber-400 transition-colors p-3 rounded-xl hover:bg-neutral-800"
+                          className="flex items-center gap-4 w-full text-left text-neutral-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-neutral-800"
                         >
                           <Library className="w-5 h-5" />
                           <span className="font-medium text-sm">Painel Administrativo</span>
@@ -1573,7 +1885,8 @@ function AppContent() {
                       {deferredPrompt && (
                         <button 
                           onClick={handleInstallClick}
-                          className="flex items-center gap-4 w-full text-left text-amber-300 transition-colors p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20"
+                          className="flex items-center gap-4 w-full text-left transition-colors p-3 rounded-xl border cursor-pointer"
+                          style={{ backgroundColor: `${accent.hex}15`, borderColor: `${accent.hex}30`, color: accent.hex }}
                         >
                           <Download className="w-5 h-5" />
                           <div className="flex flex-col">
@@ -1589,7 +1902,12 @@ function AppContent() {
                           <div className="space-y-4">
                             <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
                               <p className="text-xs text-neutral-400">Logado como</p>
-                              <p className="text-sm font-bold text-amber-400 truncate">{user.email}</p>
+                              <p 
+                                className="text-sm font-bold truncate"
+                                style={{ color: accent.hex }}
+                              >
+                                {user.email}
+                              </p>
                             </div>
                             <button 
                               onClick={async () => {
@@ -1609,7 +1927,8 @@ function AppContent() {
                         ) : (
                           <button 
                             onClick={() => setMenuView('auth')}
-                            className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl font-bold transition-all shadow-md active:scale-95"
+                            className="w-full py-3 text-neutral-950 rounded-xl font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                            style={{ backgroundColor: accent.hex }}
                           >
                             Entrar / Sincronizar
                           </button>
@@ -1945,6 +2264,7 @@ function AppContent() {
             isPlaying={isPlaying}
             onTogglePlay={() => setIsPlaying(!isPlaying)}
             onUpdateSong={handleUpdateSong}
+            onOpenSlideEditor={(song) => setEditingSongForSlides(song)}
             onClose={() => {
               setIsProjecting(false);
               setIsPlaying(false);
@@ -1953,6 +2273,19 @@ function AppContent() {
             audioElement={audio}
             remoteRoomId={remoteRoomId}
             fontFamily={fontFamily}
+          />
+        )}
+
+        {/* Slide Editor Modal (Imagem 1) */}
+        {editingSongForSlides && (
+          <SlideEditorModal
+            isOpen={true}
+            song={editingSongForSlides}
+            onClose={() => setEditingSongForSlides(null)}
+            onSaveSong={(updated) => handleSaveSongSlides(updated)}
+            onProjectSlide={(song, slideIdx) => {
+              handlePlaySong(song);
+            }}
           />
         )}
       </AnimatePresence>

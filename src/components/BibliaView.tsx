@@ -4,6 +4,7 @@ import {
   SlidersHorizontal, Play, Bookmark, Maximize2
 } from 'lucide-react';
 import { Song } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface BookInfo {
   abbr: string;
@@ -163,6 +164,7 @@ interface BibliaViewProps {
 }
 
 export function BibliaView({ onProjectVerse }: BibliaViewProps) {
+  const { accent, isDarkMode } = useTheme();
   const [version, setVersion] = useState('Almeida Revista e Atualizada (ARA)');
   const [testamentFilter, setTestamentFilter] = useState<'AT' | 'NT'>('AT');
   const [selectedBook, setSelectedBook] = useState<BookInfo>(BIBLE_BOOKS[0]);
@@ -247,6 +249,10 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
       lyrics: text,
       author: ref
     };
+    try {
+      localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
+      localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
+    } catch (e) {}
     onProjectVerse(verseSong);
   };
 
@@ -254,9 +260,16 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
     if (selectedVerseIndex === null) return;
     const text = rawVerses[selectedVerseIndex] || '';
     const ref = `${selectedBook.name.toUpperCase()} ${selectedChapter}:${selectedVerseIndex + 1} (${versionAbbr})`;
-    navigator.clipboard.writeText(`${ref} - "${text}"`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(`${ref} - "${text}"`)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(err => {
+          console.warn('Não foi possível copiar versículo:', err);
+        });
+    }
   };
 
   const versionAbbr = useMemo(() => {
@@ -280,7 +293,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
   // Visual card styles by Bible section matching image.png
   const getBookCardStyle = (b: BookInfo, isSelected: boolean) => {
     if (isSelected) {
-      return 'border-2 border-[#dfa43a] bg-[#221d14] text-[#dfa43a] shadow-md';
+      return 'border-2 shadow-md';
     }
     switch (b.category) {
       case 'lei':
@@ -303,7 +316,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
   };
 
   return (
-    <div className="w-full h-full flex flex-col p-2 sm:p-3 gap-2.5 text-white select-none overflow-hidden">
+    <div className="w-full h-full flex flex-col p-2 sm:p-3 gap-2.5 text-white select-none overflow-y-auto lg:overflow-hidden custom-scrollbar">
       {/* ============================================================ */}
       {/* TOP BAR (EXACT MATCH WITH screenshot image.png)              */}
       {/* ============================================================ */}
@@ -318,7 +331,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
               <select
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
-                className="bg-transparent text-xs sm:text-sm font-bold text-white outline-none cursor-pointer hover:text-amber-400 pr-5 appearance-none"
+                className="bg-transparent text-xs sm:text-sm font-bold text-white outline-none cursor-pointer pr-5 appearance-none"
               >
                 <option value="Almeida Revista e Atualizada (ARA)" className="bg-[#18181b] text-white">Almeida Revista e Atualizada (ARA)</option>
                 <option value="Nova Versão Internacional (NVI)" className="bg-[#18181b] text-white">Nova Versão Internacional (NVI)</option>
@@ -344,10 +357,11 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
 
         {/* Right: Golden circular button, Search input, Navegar em versículos button */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Golden Circular emblem button matching image.png */}
+          {/* Circular emblem button matching dynamic theme */}
           <button 
             onClick={() => handleProjectSelected(selectedVerseIndex)}
-            className="w-8 h-8 rounded-full bg-[#dfa43a] hover:bg-[#c9922f] text-neutral-950 flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0"
+            className="w-8 h-8 rounded-full text-neutral-950 flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0 hover:brightness-110 cursor-pointer"
+            style={{ backgroundColor: accent.hex }}
             title="Projetar versículo selecionado"
           >
             <BookOpen className="w-4 h-4 text-neutral-950 stroke-[2.5]" />
@@ -361,7 +375,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
               placeholder="Pesquisar na Bíblia"
               value={searchGlobalQuery}
               onChange={(e) => setSearchGlobalQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-[#1b1c20] border border-neutral-700/80 rounded-full text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400 w-36 sm:w-52 transition-all"
+              className="pl-8 pr-3 py-1.5 bg-[#1b1c20] border border-neutral-700/80 rounded-full text-xs text-white placeholder:text-neutral-500 outline-none w-36 sm:w-52 transition-all"
             />
           </div>
 
@@ -370,7 +384,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
             onClick={() => handleProjectSelected(selectedVerseIndex)}
             className="px-3.5 py-1.5 bg-[#1b1c20] hover:bg-neutral-800 border border-neutral-700/80 rounded-full text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-sm shrink-0"
           >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-[#dfa43a]" />
+            <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: accent.hex }} />
             <span className="hidden sm:inline">Navegar em versículos</span>
           </button>
         </div>
@@ -379,12 +393,12 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
       {/* ============================================================ */}
       {/* 2 MAIN PANELS WORKSPACE (EXACT MATCH WITH screenshot)        */}
       {/* ============================================================ */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2.5 overflow-hidden">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2.5 lg:overflow-hidden">
         
         {/* ------------------------------------------------------------ */}
         {/* LEFT PANEL: LIVROS & CAPÍTULOS (Col-span 5 in 12-col)        */}
         {/* ------------------------------------------------------------ */}
-        <div className="lg:col-span-5 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 flex flex-col h-full overflow-hidden shadow-md">
+        <div className="lg:col-span-5 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 flex flex-col h-[340px] sm:h-[380px] lg:h-full overflow-hidden shadow-md shrink-0">
           <div className="grid grid-cols-12 gap-3 h-full overflow-hidden">
             
             {/* SUB-COLUMN A: LIVROS (Cols 8 of 12) */}
@@ -397,7 +411,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                   placeholder="Buscar livro..."
                   value={searchBookQuery}
                   onChange={(e) => setSearchBookQuery(e.target.value)}
-                  className="w-full pl-7 pr-2.5 py-1 bg-[#1e2025] border border-neutral-800 rounded-lg text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400"
+                  className="w-full pl-7 pr-2.5 py-1 bg-[#1e2025] border border-neutral-800 rounded-lg text-xs text-white placeholder:text-neutral-500 outline-none"
                 />
               </div>
 
@@ -411,9 +425,10 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                     onClick={() => setTestamentFilter('AT')}
                     className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition-all ${
                       testamentFilter === 'AT' 
-                        ? 'bg-[#dfa43a] text-neutral-950 shadow-sm' 
+                        ? 'text-neutral-950 shadow-sm' 
                         : 'text-neutral-400 hover:text-white'
                     }`}
+                    style={testamentFilter === 'AT' ? { backgroundColor: accent.hex } : undefined}
                   >
                     AT
                   </button>
@@ -421,9 +436,10 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                     onClick={() => setTestamentFilter('NT')}
                     className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition-all ${
                       testamentFilter === 'NT' 
-                        ? 'bg-[#dfa43a] text-neutral-950 shadow-sm' 
+                        ? 'text-neutral-950 shadow-sm' 
                         : 'text-neutral-400 hover:text-white'
                     }`}
+                    style={testamentFilter === 'NT' ? { backgroundColor: accent.hex } : undefined}
                   >
                     NT
                   </button>
@@ -442,6 +458,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                         key={b.abbr}
                         onClick={() => handleSelectBook(b)}
                         className={`rounded-xl p-1.5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${cardStyle}`}
+                        style={isSelected ? { borderColor: accent.hex, backgroundColor: `${accent.hex}25`, color: accent.hex } : undefined}
                       >
                         <span className="font-bold text-xs leading-tight tracking-tight">
                           {b.abbr}
@@ -466,7 +483,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                   placeholder="Cap..."
                   value={searchChapterQuery}
                   onChange={(e) => setSearchChapterQuery(e.target.value)}
-                  className="w-full pl-7 pr-2 py-1 bg-[#1e2025] border border-neutral-800 rounded-lg text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400"
+                  className="w-full pl-7 pr-2 py-1 bg-[#1e2025] border border-neutral-800 rounded-lg text-xs text-white placeholder:text-neutral-500 outline-none"
                 />
               </div>
 
@@ -492,9 +509,10 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                         onClick={() => handleSelectChapter(ch)}
                         className={`aspect-square rounded-lg text-xs font-semibold flex items-center justify-center transition-all border ${
                           isSelected
-                            ? 'bg-[#dfa43a] text-neutral-950 font-bold border-[#dfa43a] shadow-md scale-105'
+                            ? 'text-neutral-950 font-bold shadow-md scale-105'
                             : 'bg-[#212328] hover:bg-neutral-700 text-neutral-200 border-neutral-800/80'
                         }`}
+                        style={isSelected ? { backgroundColor: accent.hex, borderColor: accent.hex } : undefined}
                       >
                         {ch}
                       </button>
@@ -510,7 +528,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
         {/* ------------------------------------------------------------ */}
         {/* RIGHT PANEL: VERSÍCULOS & LEITURA (Col-span 7 in 12-col)     */}
         {/* ------------------------------------------------------------ */}
-        <div className="lg:col-span-7 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3.5 flex flex-col h-full overflow-hidden relative shadow-md">
+        <div className="lg:col-span-7 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3.5 flex flex-col h-[480px] lg:h-full overflow-hidden relative shadow-md shrink-0">
           
           {/* Header row matching image.png */}
           <div className="flex items-center justify-between pb-2 border-b border-neutral-800/80 shrink-0 gap-2">
@@ -561,7 +579,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                   placeholder="Pesquisar versículo"
                   value={verseSearchQuery}
                   onChange={(e) => setVerseSearchQuery(e.target.value)}
-                  className="pl-7 pr-2.5 py-1 bg-[#1e2025] border border-neutral-700/80 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none focus:border-amber-400 w-32 sm:w-44 transition-all"
+                  className="pl-7 pr-2.5 py-1 bg-[#1e2025] border border-neutral-700/80 rounded-xl text-xs text-white placeholder:text-neutral-500 outline-none focus:border-neutral-500 w-32 sm:w-44 transition-all"
                 />
               </div>
 
@@ -586,15 +604,23 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                   key={verseNum}
                   onClick={() => setSelectedVerseIndex(isSelected ? null : idx)}
                   onDoubleClick={() => handleProjectSelected(idx)}
-                  className={`flex items-start gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all ${
+                  className={`flex items-start gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all border-l-4 ${
                     isSelected
-                      ? 'bg-[#20190e] border border-amber-500/60 border-l-4 border-l-amber-500 text-white font-medium shadow-md'
-                      : 'hover:bg-neutral-800/60 text-neutral-300 border-l-4 border-transparent'
+                      ? 'text-white font-medium shadow-md border'
+                      : 'hover:bg-neutral-800/60 text-neutral-300 border-transparent'
                   }`}
+                  style={isSelected ? {
+                    backgroundColor: `${accent.hex}18`,
+                    borderColor: `${accent.hex}50`,
+                    borderLeftColor: accent.hex
+                  } : undefined}
                 >
-                  <span className={`font-mono text-xs font-bold pt-0.5 w-6 text-right shrink-0 ${
-                    isSelected ? 'text-amber-400 font-bold' : 'text-neutral-500'
-                  }`}>
+                  <span 
+                    className={`font-mono text-xs font-bold pt-0.5 w-6 text-right shrink-0 ${
+                      isSelected ? 'font-bold' : 'text-neutral-500'
+                    }`}
+                    style={isSelected ? { color: accent.hex } : undefined}
+                  >
                     {verseNum}
                   </span>
                   <p className="text-xs sm:text-[13.5px] leading-relaxed flex-1 select-text">
@@ -606,7 +632,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
           </div>
 
           {/* ============================================================ */}
-          {/* FLOATING PROJECTION CARD & YELLOW CIRCLE PLAY BUTTON         */}
+          {/* FLOATING PROJECTION CARD & CIRCLE PLAY BUTTON               */}
           {/* Only rendered when a verse is selected (Image 4 requirement) */}
           {/* ============================================================ */}
           {selectedVerseIndex !== null && (
@@ -614,26 +640,31 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
               {/* Dark Navy Projection Preview Card */}
               <div 
                 onClick={() => handleProjectSelected(selectedVerseIndex)}
-                className="bg-[#090e18]/95 backdrop-blur-md border border-[#1b253b] hover:border-[#dfa43a]/60 rounded-2xl p-4 sm:p-5 max-w-xs sm:max-w-md shadow-[0_12px_40px_rgba(0,0,0,0.85)] cursor-pointer transition-all group"
+                className="bg-[#090e18]/95 backdrop-blur-md border border-[#1b253b] rounded-2xl p-4 sm:p-5 max-w-xs sm:max-w-md shadow-[0_12px_40px_rgba(0,0,0,0.85)] cursor-pointer transition-all group"
+                style={{ borderColor: `${accent.hex}40` }}
               >
                 <p className="text-xs sm:text-[13px] text-neutral-100 font-medium leading-relaxed italic line-clamp-3 select-text">
                   “{currentVerseText}”
                 </p>
-                <p className="text-[11px] font-bold text-[#dfa43a] tracking-wider mt-2 uppercase font-sans">
+                <p 
+                  className="text-[11px] font-bold tracking-wider mt-2 uppercase font-sans"
+                  style={{ color: accent.hex }}
+                >
                   {currentReference}
                 </p>
               </div>
 
-              {/* Floating Yellow Circular Play Button overlapping/at right edge */}
+              {/* Floating Circular Play Button overlapping/at right edge */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleProjectSelected(selectedVerseIndex);
                 }}
-                className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-[#dfa43a] hover:bg-[#f5b842] active:scale-95 shadow-2xl flex items-center justify-center transition-all cursor-pointer border-2 border-[#16171a] shrink-0 -ml-3 -mb-1 z-40 hover:scale-105"
+                className="w-12 h-12 sm:w-13 sm:h-13 rounded-full active:scale-95 shadow-2xl flex items-center justify-center transition-all cursor-pointer border-2 border-[#16171a] shrink-0 -ml-3 -mb-1 z-40 hover:scale-105 hover:brightness-110"
+                style={{ backgroundColor: accent.hex }}
                 title="Projetar este versículo imediatamente no telão"
               >
-                <Play className="w-5 h-5 text-[#0a182b] fill-none stroke-[2.6] ml-0.5" />
+                <Play className="w-5 h-5 text-neutral-950 fill-none stroke-[2.6] ml-0.5" />
               </button>
             </div>
           )}

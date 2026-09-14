@@ -82,7 +82,11 @@ export function RemoteReceiverView({ roomId }: RemoteReceiverViewProps) {
 
     return () => {
       socket.disconnect();
-      if (wakeLockRef.current) wakeLockRef.current.release();
+      if (wakeLockRef.current) {
+        try {
+          wakeLockRef.current.release().catch(() => {});
+        } catch (e) {}
+      }
     };
   }, [roomId]);
 

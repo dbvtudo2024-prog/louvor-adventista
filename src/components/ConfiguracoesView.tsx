@@ -5,6 +5,7 @@ import {
   Smartphone, QrCode, Check, Copy, CheckCheck, Shield,
   Keyboard, Settings2, Sliders, Volume2, Maximize2
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface ConfiguracoesViewProps {
   onBackToHome?: () => void;
@@ -15,10 +16,17 @@ type TabKey = 'aparencia' | 'geral' | 'projecao' | 'remoto';
 export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('aparencia');
 
-  // Aparência state
-  const [interacao, setInteracao] = useState<'dinamico' | 'suave' | 'nevoa'>('suave');
-  const [corRealce, setCorRealce] = useState<'ambar' | 'laranja' | 'ciano' | 'verde'>('ambar');
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const {
+    accentColor: corRealce,
+    accent,
+    isDarkMode,
+    interacao,
+    setAccentColor,
+    toggleTheme,
+    setInteracao,
+  } = useTheme();
+
+  const activeAccent = accent;
 
   // Geral state
   const [autoScroll, setAutoScroll] = useState(true);
@@ -35,18 +43,25 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   const remoteUrl = `${window.location.origin}/remote`;
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(remoteUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(remoteUrl)
+        .then(() => {
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 2000);
+        })
+        .catch(err => {
+          console.warn('Não foi possível copiar o link:', err);
+        });
+    }
   };
 
   return (
-    <div className="w-full h-full max-w-6xl mx-auto px-4 py-3 flex flex-col gap-4 text-white select-none overflow-hidden">
-      {/* TOP NAVIGATION TABS (matching Imagem 3) */}
+    <div className="w-full h-full max-w-6xl mx-auto px-4 py-2 flex flex-col text-white select-none overflow-hidden">
+      {/* TOP NAVIGATION TABS */}
       <div className="flex items-center gap-6 sm:gap-10 border-b border-neutral-800/80 px-2 shrink-0">
         <button
           onClick={() => setActiveTab('aparencia')}
-          className={`pb-3 text-sm sm:text-base font-bold transition-all relative ${
+          className={`pb-2.5 text-sm sm:text-base font-bold transition-all relative ${
             activeTab === 'aparencia' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -54,14 +69,14 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
           {activeTab === 'aparencia' && (
             <motion.div
               layoutId="tab-underline"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full"
+              className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full ${activeAccent.tabHighlight}`}
             />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('geral')}
-          className={`pb-3 text-sm sm:text-base font-bold transition-all relative ${
+          className={`pb-2.5 text-sm sm:text-base font-bold transition-all relative ${
             activeTab === 'geral' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -69,14 +84,14 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
           {activeTab === 'geral' && (
             <motion.div
               layoutId="tab-underline"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full"
+              className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full ${activeAccent.tabHighlight}`}
             />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('projecao')}
-          className={`pb-3 text-sm sm:text-base font-bold transition-all relative ${
+          className={`pb-2.5 text-sm sm:text-base font-bold transition-all relative ${
             activeTab === 'projecao' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -84,14 +99,14 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
           {activeTab === 'projecao' && (
             <motion.div
               layoutId="tab-underline"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full"
+              className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full ${activeAccent.tabHighlight}`}
             />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('remoto')}
-          className={`pb-3 text-sm sm:text-base font-bold transition-all relative ${
+          className={`pb-2.5 text-sm sm:text-base font-bold transition-all relative ${
             activeTab === 'remoto' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -99,195 +114,242 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
           {activeTab === 'remoto' && (
             <motion.div
               layoutId="tab-underline"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full"
+              className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full ${activeAccent.tabHighlight}`}
             />
           )}
         </button>
       </div>
 
       {/* TABS CONTENT CONTAINER */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-        {/* TAB 1: APARÊNCIA (EXACT REPLICA OF IMAGEM 3) */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-4 px-1">
+        {/* TAB 1: APARÊNCIA */}
         {activeTab === 'aparencia' && (
-        <div className="flex flex-col items-center justify-center py-6 sm:py-10 relative overflow-hidden">
-          {/* Display Titles */}
-          <div className="text-center z-10 mb-8 sm:mb-12">
-            <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-              Experiência Visual
-            </h2>
-            <p className="text-sm sm:text-base text-neutral-400 mt-2 font-medium">
-              Sinta a atmosfera do Louvor JA se transformar
-            </p>
-          </div>
-
-          {/* Golden Ambient Halo & Center Moon */}
-          <div className="relative w-full max-w-3xl flex items-center justify-center min-h-[380px] sm:min-h-[440px]">
-            {/* Outer Golden Glow & Rings */}
-            <div className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full bg-gradient-to-b from-amber-500/20 via-amber-600/10 to-transparent blur-3xl pointer-events-none" />
-            
-            <div className="absolute w-64 h-64 sm:w-80 sm:h-80 rounded-full border border-amber-500/15 pointer-events-none" />
-            <div className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full border border-amber-500/10 pointer-events-none" />
-
-            {/* Central Dark Disc with Moon Icon (Image 3) */}
-            <div className="w-36 h-36 sm:w-48 sm:h-48 rounded-full bg-[#18181a] border border-neutral-700/60 shadow-2xl flex items-center justify-center z-10 relative group">
-              <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-[#121214] flex items-center justify-center shadow-inner">
-                {isDarkMode ? (
-                  <Moon className="w-14 h-14 sm:w-18 sm:h-18 text-[#d8d8ea] stroke-[1.75] drop-shadow-[0_0_15px_rgba(216,216,234,0.35)]" />
-                ) : (
-                  <Sun className="w-14 h-14 sm:w-18 sm:h-18 text-amber-400 stroke-[1.75] drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-                )}
-              </div>
-            </div>
-
-            {/* FLOATING CARD ESQUERDO: INTERAÇÕES (Image 3) */}
-            <div className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-44 sm:w-60 bg-[#161618]/90 backdrop-blur-md border border-neutral-800/90 rounded-2xl p-3 sm:p-4 shadow-xl">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="text-amber-500">
-                  <Layers className="w-4 h-4 stroke-[2]" />
-                </div>
-                <h4 className="text-xs sm:text-sm font-bold text-white">Interações</h4>
-              </div>
-              <p className="text-[10px] sm:text-xs text-neutral-400 mb-3 leading-snug">
-                Fluidez nas transições de cena.
-              </p>
-
-              <div className="flex items-center gap-1.5 p-1 bg-neutral-900/90 rounded-xl border border-neutral-800">
-                {(['dinamico', 'suave', 'nevoa'] as const).map((mode) => {
-                  const isSelected = interacao === mode;
-                  const label = mode === 'dinamico' ? 'Dinâmico' : mode === 'suave' ? 'Suave' : 'Névoa';
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => setInteracao(mode)}
-                      className={`flex-1 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all ${
-                        isSelected
-                          ? 'bg-[#292215] border border-amber-500/70 text-amber-400 shadow-sm'
-                          : 'text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* FLOATING CARD DIREITO: CORES DE REALCE (Image 3) */}
-            <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-44 sm:w-60 bg-[#161618]/90 backdrop-blur-md border border-neutral-800/90 rounded-2xl p-3 sm:p-4 shadow-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="text-amber-500">
-                  <Palette className="w-4 h-4 stroke-[2]" />
-                </div>
-                <h4 className="text-xs sm:text-sm font-bold text-white">Cores de Realce</h4>
-              </div>
-
-              {/* 4 Color Chips matching Image 3 */}
-              <div className="flex items-center justify-between sm:justify-start sm:gap-3">
-                {/* 1: Dourado / Âmbar */}
-                <button
-                  onClick={() => setCorRealce('ambar')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#dfa43a] flex items-center justify-center transition-all ${
-                    corRealce === 'ambar' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  title="Dourado JA"
-                >
-                  {corRealce === 'ambar' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
-                </button>
-
-                {/* 2: Laranja / Coral */}
-                <button
-                  onClick={() => setCorRealce('laranja')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#ea734d] flex items-center justify-center transition-all ${
-                    corRealce === 'laranja' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  title="Coral"
-                >
-                  {corRealce === 'laranja' && <Check className="w-4 h-4 text-white stroke-[3]" />}
-                </button>
-
-                {/* 3: Ciano / Menta */}
-                <button
-                  onClick={() => setCorRealce('ciano')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#38b2ac] flex items-center justify-center transition-all ${
-                    corRealce === 'ciano' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  title="Ciano"
-                >
-                  {corRealce === 'ciano' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
-                </button>
-
-                {/* 4: Verde */}
-                <button
-                  onClick={() => setCorRealce('verde')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#5bb377] flex items-center justify-center transition-all ${
-                    corRealce === 'verde' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  title="Verde Esperança"
-                >
-                  {corRealce === 'verde' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* BOTTOM THEME TOGGLE SWITCH (Image 3) */}
-          <div className="flex flex-col items-center mt-6 z-10">
-            <div 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="bg-[#18181a] border border-neutral-800 rounded-full px-5 py-2.5 flex items-center gap-4 cursor-pointer shadow-lg hover:border-neutral-700 transition-all"
-            >
-              <Sun className={`w-4 h-4 transition-colors ${!isDarkMode ? 'text-amber-400' : 'text-neutral-500'}`} />
+          <div className="w-full flex flex-col items-center gap-6 py-2">
+            {/* Dynamic Halo & Center Moon/Sun */}
+            <div className="relative w-full max-w-4xl flex flex-col sm:flex-row items-center justify-center gap-6 min-h-[260px] sm:min-h-[320px] shrink-0 my-auto">
+              {/* Outer Glow behind circle changing dynamically to selected color */}
+              <div 
+                className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-700 ease-out"
+                style={{
+                  background: `radial-gradient(circle, ${activeAccent.hex}40 0%, ${activeAccent.hex}15 45%, transparent 70%)`
+                }}
+              />
               
-              {/* Slider Track with Golden Knob */}
-              <div className="w-12 h-6 bg-neutral-900 rounded-full p-0.5 relative flex items-center border border-neutral-700">
-                <motion.div
-                  animate={{ x: isDarkMode ? 24 : 0 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className="w-5 h-5 rounded-full bg-[#dfa43a] shadow-md"
+              {/* Concentric rings adapting to selected color */}
+              <div 
+                className="absolute w-60 h-60 sm:w-80 sm:h-80 rounded-full border pointer-events-none transition-colors duration-500"
+                style={{ borderColor: `${activeAccent.hex}30` }}
+              />
+              <div 
+                className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full border pointer-events-none transition-colors duration-500"
+                style={{ borderColor: `${activeAccent.hex}18` }}
+              />
+
+              {/* Central Interactive Disc with Moon/Sun Icon - Clicking toggles light/dark mode */}
+              <button
+                type="button"
+                onClick={() => toggleTheme()}
+                className="w-32 h-32 sm:w-44 sm:h-44 rounded-full bg-[#18181a] border border-neutral-700/60 shadow-2xl flex items-center justify-center z-10 relative group cursor-pointer hover:scale-105 transition-all duration-300 active:scale-95"
+                title="Clique para alternar Modo Claro / Escuro"
+              >
+                <div 
+                  className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full flex items-center justify-center shadow-inner transition-colors duration-500 ${
+                    isDarkMode ? 'bg-[#121214]' : 'bg-[#fffaf0]'
+                  }`}
+                >
+                  <AnimatePresence mode="wait">
+                    {isDarkMode ? (
+                      <motion.div
+                        key="moon"
+                        initial={{ opacity: 0, rotate: -30, scale: 0.8 }}
+                        animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                        exit={{ opacity: 0, rotate: 30, scale: 0.8 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <Moon className="w-12 h-12 sm:w-16 sm:h-16 text-[#d8d8ea] stroke-[1.75] drop-shadow-[0_0_15px_rgba(216,216,234,0.35)]" />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="sun"
+                        initial={{ opacity: 0, rotate: 30, scale: 0.8 }}
+                        animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                        exit={{ opacity: 0, rotate: -30, scale: 0.8 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <Sun 
+                          className="w-12 h-12 sm:w-16 sm:h-16 stroke-[1.75]" 
+                          style={{ color: activeAccent.hex, filter: `drop-shadow(0 0 15px ${activeAccent.hex}80)` }}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </button>
+
+              {/* CARD ESQUERDO: INTERAÇÕES */}
+              <div className="md:absolute md:left-4 md:top-1/2 md:-translate-y-1/2 z-20 w-full max-w-xs md:w-56 bg-[#161618]/90 backdrop-blur-md border border-neutral-800/90 rounded-2xl p-3 sm:p-4 shadow-xl">
+                <div className="flex items-center gap-2 mb-1">
+                  <div style={{ color: activeAccent.hex }}>
+                    <Layers className="w-4 h-4 stroke-[2]" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-white">Interações</h4>
+                </div>
+                <p className="text-[10px] sm:text-xs text-neutral-400 mb-2.5 leading-snug">
+                  Fluidez nas transições de cena.
+                </p>
+
+                <div className="flex items-center gap-1 p-1 bg-neutral-900/90 rounded-xl border border-neutral-800">
+                  {(['dinamico', 'suave', 'nevoa'] as const).map((mode) => {
+                    const isSelected = interacao === mode;
+                    const label = mode === 'dinamico' ? 'Dinâmico' : mode === 'suave' ? 'Suave' : 'Névoa';
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => setInteracao(mode)}
+                        className={`flex-1 py-1 rounded-lg text-[10px] sm:text-xs font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-[#292215] border text-white shadow-sm'
+                            : 'text-neutral-400 hover:text-white'
+                        }`}
+                        style={{
+                          borderColor: isSelected ? activeAccent.hex : 'transparent',
+                          color: isSelected ? activeAccent.hex : undefined,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CARD DIREITO: CORES DE REALCE */}
+              <div className="md:absolute md:right-4 md:top-1/2 md:-translate-y-1/2 z-20 w-full max-w-xs md:w-56 bg-[#161618]/90 backdrop-blur-md border border-neutral-800/90 rounded-2xl p-3 sm:p-4 shadow-xl">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div style={{ color: activeAccent.hex }}>
+                    <Palette className="w-4 h-4 stroke-[2]" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-white">Cores de Realce</h4>
+                </div>
+
+                {/* 4 Color Chips */}
+                <div className="flex items-center justify-between sm:justify-start sm:gap-3">
+                  {/* 1: Dourado / Âmbar */}
+                  <button
+                    type="button"
+                    onClick={() => setAccentColor('ambar')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#dfa43a] flex items-center justify-center transition-all cursor-pointer ${
+                      corRealce === 'ambar' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    title="Dourado JA"
+                  >
+                    {corRealce === 'ambar' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
+                  </button>
+
+                  {/* 2: Laranja / Coral */}
+                  <button
+                    type="button"
+                    onClick={() => setAccentColor('laranja')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#ea734d] flex items-center justify-center transition-all cursor-pointer ${
+                      corRealce === 'laranja' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    title="Coral"
+                  >
+                    {corRealce === 'laranja' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                  </button>
+
+                  {/* 3: Ciano / Menta */}
+                  <button
+                    type="button"
+                    onClick={() => setAccentColor('ciano')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#38b2ac] flex items-center justify-center transition-all cursor-pointer ${
+                      corRealce === 'ciano' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    title="Ciano"
+                  >
+                    {corRealce === 'ciano' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
+                  </button>
+
+                  {/* 4: Verde */}
+                  <button
+                    type="button"
+                    onClick={() => setAccentColor('verde')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#5bb377] flex items-center justify-center transition-all cursor-pointer ${
+                      corRealce === 'verde' ? 'ring-2 ring-white ring-offset-2 ring-offset-neutral-900 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    title="Verde Esperança"
+                  >
+                    {corRealce === 'verde' && <Check className="w-4 h-4 text-neutral-950 stroke-[3]" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* BOTTOM THEME TOGGLE SWITCH */}
+            <div className="flex flex-col items-center my-auto z-10 shrink-0">
+              <div 
+                onClick={() => toggleTheme()}
+                className="bg-[#18181a] border border-neutral-800 rounded-full px-5 py-2 flex items-center gap-4 cursor-pointer shadow-lg hover:border-neutral-700 transition-all"
+              >
+                <Sun 
+                  className="w-4 h-4 transition-colors" 
+                  style={{ color: !isDarkMode ? activeAccent.hex : '#737373' }}
+                />
+                
+                {/* Slider Track with Dynamic Accent Knob */}
+                <div className="w-12 h-6 bg-neutral-900 rounded-full p-0.5 relative flex items-center border border-neutral-700">
+                  <motion.div
+                    animate={{ x: isDarkMode ? 24 : 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    className="w-5 h-5 rounded-full shadow-md"
+                    style={{ backgroundColor: activeAccent.hex }}
+                  />
+                </div>
+
+                <Moon 
+                  className="w-4 h-4 transition-colors" 
+                  style={{ color: isDarkMode ? activeAccent.hex : '#737373' }}
                 />
               </div>
 
-              <Moon className={`w-4 h-4 transition-colors ${isDarkMode ? 'text-amber-400' : 'text-neutral-500'}`} />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-2 font-mono">
+                {isDarkMode ? 'Modo Escuro Ativo' : 'Modo Claro Ativo'}
+              </span>
             </div>
-
-            <span className="text-[11px] font-bold uppercase tracking-widest text-neutral-500 mt-3 font-mono">
-              Alterar Tema
-            </span>
           </div>
-        </div>
-      )}
+        )}
 
       {/* TAB 2: GERAL */}
       {activeTab === 'geral' && (
         <div className="max-w-3xl mx-auto w-full space-y-5">
           <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Keyboard className="w-5 h-5 text-amber-500" />
+              <Keyboard className="w-5 h-5" style={{ color: accent.hex }} />
               Teclas de Atalho do Telão
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800 flex items-center justify-between">
                 <span className="text-neutral-300">Avançar Slide</span>
-                <kbd className="px-2 py-1 bg-neutral-800 rounded text-amber-400 font-mono font-bold">Espaço / ➔</kbd>
+                <kbd className="px-2 py-1 bg-neutral-800 rounded font-mono font-bold" style={{ color: accent.hex }}>Espaço / ➔</kbd>
               </div>
               <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800 flex items-center justify-between">
                 <span className="text-neutral-300">Voltar Slide</span>
-                <kbd className="px-2 py-1 bg-neutral-800 rounded text-amber-400 font-mono font-bold">⬅</kbd>
+                <kbd className="px-2 py-1 bg-neutral-800 rounded font-mono font-bold" style={{ color: accent.hex }}>⬅</kbd>
               </div>
               <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800 flex items-center justify-between">
                 <span className="text-neutral-300">Tela Preta (Blackout)</span>
-                <kbd className="px-2 py-1 bg-neutral-800 rounded text-amber-400 font-mono font-bold">B</kbd>
+                <kbd className="px-2 py-1 bg-neutral-800 rounded font-mono font-bold" style={{ color: accent.hex }}>B</kbd>
               </div>
               <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800 flex items-center justify-between">
                 <span className="text-neutral-300">Limpar Letra (Clear)</span>
-                <kbd className="px-2 py-1 bg-neutral-800 rounded text-amber-400 font-mono font-bold">C</kbd>
+                <kbd className="px-2 py-1 bg-neutral-800 rounded font-mono font-bold" style={{ color: accent.hex }}>C</kbd>
               </div>
             </div>
           </div>
 
           <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Settings2 className="w-5 h-5 text-amber-500" />
+              <Settings2 className="w-5 h-5" style={{ color: accent.hex }} />
               Comportamento do Sistema
             </h3>
             
@@ -299,7 +361,8 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                 </div>
                 <button
                   onClick={() => setAutoScroll(!autoScroll)}
-                  className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${autoScroll ? 'bg-amber-500' : 'bg-neutral-800'}`}
+                  className="w-11 h-6 rounded-full transition-colors relative p-0.5"
+                  style={{ backgroundColor: autoScroll ? accent.hex : '#262626' }}
                 >
                   <div className={`w-5 h-5 rounded-full bg-white transition-transform ${autoScroll ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
@@ -330,14 +393,20 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
         <div className="max-w-3xl mx-auto w-full space-y-5">
           <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Tv className="w-5 h-5 text-amber-500" />
+              <Tv className="w-5 h-5" style={{ color: accent.hex }} />
               Telas e Monitores Detectados
             </h3>
             
             <div className="space-y-3">
-              <div className="p-4 bg-neutral-900 rounded-xl border border-amber-500/40 flex items-center justify-between">
+              <div 
+                className="p-4 bg-neutral-900 rounded-xl border flex items-center justify-between"
+                style={{ borderColor: `${accent.hex}40` }}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: `${accent.hex}15`, color: accent.hex }}
+                  >
                     <Monitor className="w-5 h-5" />
                   </div>
                   <div>
@@ -362,7 +431,8 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                 </div>
                 <button
                   onClick={() => window.open('/tv', '_blank', 'width=1920,height=1080')}
-                  className="px-3 py-1.5 bg-[#dfa43a] hover:bg-[#caa930] text-neutral-950 font-bold rounded-lg text-xs transition-colors shadow-sm"
+                  className="px-3 py-1.5 text-neutral-950 font-bold rounded-lg text-xs transition-all shadow-sm cursor-pointer hover:brightness-110"
+                  style={{ backgroundColor: accent.hex }}
                 >
                   Abrir Telão
                 </button>
@@ -372,7 +442,7 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
 
           <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-amber-500" />
+              <Sliders className="w-5 h-5" style={{ color: accent.hex }} />
               Configuração Visual da Saída
             </h3>
             
@@ -382,7 +452,7 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                 <select
                   value={screenResolution}
                   onChange={(e) => setScreenResolution(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-amber-400"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500"
                 >
                   <option value="1080p">Full HD (1920 x 1080 - 16:9)</option>
                   <option value="720p">HD (1280 x 720 - 16:9)</option>
@@ -395,7 +465,7 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                 <select
                   value={bgStyle}
                   onChange={(e) => setBgStyle(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-amber-400"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500"
                 >
                   <option value="preto">Preto Absoluto (#000000)</option>
                   <option value="gradiente">Gradiente Noturno Litúrgico</option>
@@ -410,7 +480,10 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
       {/* TAB 4: CONTROLE REMOTO */}
       {activeTab === 'remoto' && (
         <div className="max-w-2xl mx-auto w-full bg-[#161618] border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400 shadow-inner">
+          <div 
+            className="w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto shadow-inner"
+            style={{ backgroundColor: `${accent.hex}15`, borderColor: `${accent.hex}40`, color: accent.hex }}
+          >
             <Smartphone className="w-8 h-8" />
           </div>
 
@@ -422,7 +495,10 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
           </div>
 
           {/* QR Code Container */}
-          <div className="p-4 bg-white rounded-2xl w-44 h-44 mx-auto flex items-center justify-center shadow-lg border-4 border-amber-500/40">
+          <div 
+            className="p-4 bg-white rounded-2xl w-44 h-44 mx-auto flex items-center justify-center shadow-lg border-4"
+            style={{ borderColor: `${accent.hex}50` }}
+          >
             <img
               src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(remoteUrl)}`}
               alt="QR Code Controle Remoto"
@@ -435,7 +511,8 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
             <span className="text-neutral-300 font-mono truncate">{remoteUrl}</span>
             <button
               onClick={handleCopyLink}
-              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl flex items-center gap-1.5 transition-colors shrink-0 shadow-sm"
+              className="px-3 py-1.5 text-neutral-950 font-bold rounded-xl flex items-center gap-1.5 transition-all shrink-0 shadow-sm cursor-pointer hover:brightness-110"
+              style={{ backgroundColor: accent.hex }}
             >
               {copiedLink ? <CheckCheck className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>

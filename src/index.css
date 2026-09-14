@@ -20,7 +20,10 @@
 
 @layer base {
   body {
-    @apply bg-brand-warm text-slate-900 font-sans antialiased;
+    @apply font-sans antialiased;
+  }
+  * {
+    -webkit-font-smoothing: antialiased;
   }
 }
 

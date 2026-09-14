@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 
 // The service worker is handled by vite-plugin-pwa automatically.
@@ -14,7 +15,9 @@ if (rootElement) {
     console.log('Main.tsx: Starting render...');
     createRoot(rootElement).render(
       <StrictMode>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </StrictMode>,
     );
     console.log('Main.tsx: Render called successfully');
@@ -27,4 +30,5 @@ if (rootElement) {
 } else {
   console.error('Root element not found');
 }
+
 

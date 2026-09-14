@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Monitor, Tv, ExternalLink, Copy, Check, X, RefreshCw, Layers, CheckCircle2, AlertCircle, Laptop } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface DetectedScreen {
   id: string;
@@ -52,6 +53,7 @@ export function TelasModal({
   copied,
   onCopyTvUrl
 }: TelasModalProps) {
+  const { accent } = useTheme();
   const [screens, setScreens] = useState<DetectedScreen[]>(DEFAULT_SCREENS);
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasMultiScreenApi, setHasMultiScreenApi] = useState(false);
@@ -143,7 +145,9 @@ export function TelasModal({
 
   useEffect(() => {
     if (isOpen) {
-      detectScreens();
+      detectScreens().catch(e => {
+        console.warn('detectScreens caught:', e);
+      });
     }
   }, [isOpen]);
 
@@ -169,7 +173,14 @@ export function TelasModal({
           {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-neutral-800 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <div 
+                className="w-10 h-10 rounded-2xl border flex items-center justify-center transition-colors"
+                style={{
+                  backgroundColor: `${accent.hex}20`,
+                  borderColor: `${accent.hex}40`,
+                  color: accent.hex,
+                }}
+              >
                 <Monitor className="w-5 h-5" />
               </div>
               <div>
@@ -179,7 +190,7 @@ export function TelasModal({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+              className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -190,7 +201,7 @@ export function TelasModal({
             <div className="p-4 rounded-2xl bg-neutral-900/90 border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" />
+                  <Layers className="w-4 h-4" style={{ color: accent.hex }} />
                   <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
                     Telas Conectadas ao PC
                   </span>
@@ -198,10 +209,10 @@ export function TelasModal({
                 <button
                   onClick={detectScreens}
                   disabled={isDetecting}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
                   title="Escanear monitores novamente"
                 >
-                  <RefreshCw className={`w-3 h-3 ${isDetecting ? 'animate-spin text-amber-400' : ''}`} />
+                  <RefreshCw className={`w-3 h-3 ${isDetecting ? 'animate-spin' : ''}`} style={{ color: isDetecting ? accent.hex : undefined }} />
                   <span>{isDetecting ? 'Detectando...' : 'Reescanear'}</span>
                 </button>
               </div>
@@ -216,9 +227,14 @@ export function TelasModal({
                       onClick={() => setSelectedScreenId(screen.id)}
                       className={`relative p-3 rounded-xl border-2 transition-all cursor-pointer flex flex-col items-center justify-center min-w-[140px] ${
                         isSelected
-                          ? 'border-amber-500 bg-amber-500/10 text-white shadow-lg shadow-amber-500/10'
+                          ? 'text-white'
                           : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 text-neutral-400'
                       }`}
+                      style={{
+                        borderColor: isSelected ? accent.hex : undefined,
+                        backgroundColor: isSelected ? `${accent.hex}18` : undefined,
+                        boxShadow: isSelected ? `0 0 15px ${accent.hex}25` : undefined,
+                      }}
                     >
                       <div className="w-10 h-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center mb-2 font-mono font-bold text-xs text-neutral-300">
                         {idx + 1}
@@ -230,7 +246,10 @@ export function TelasModal({
                         {screen.width} × {screen.height}
                       </span>
                       {isSelected && (
-                        <div className="absolute -top-2 -right-2 bg-amber-500 text-neutral-950 rounded-full p-0.5">
+                        <div 
+                          className="absolute -top-2 -right-2 text-neutral-950 rounded-full p-0.5"
+                          style={{ backgroundColor: accent.hex }}
+                        >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                         </div>
                       )}
@@ -243,13 +262,14 @@ export function TelasModal({
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/60 text-xs">
                 <div>
                   <span className="text-neutral-400">Destino da projeção: </span>
-                  <span className="font-semibold text-amber-400">{targetScreen?.name || 'Tela 2 (Projetor)'}</span>
+                  <span className="font-semibold" style={{ color: accent.hex }}>{targetScreen?.name || 'Tela 2 (Projetor)'}</span>
                 </div>
                 <button
                   onClick={handleLaunchToSelectedScreen}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-neutral-950 font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 cursor-pointer hover:brightness-110"
+                  style={{ backgroundColor: accent.hex }}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>Abrir Projeção no {targetScreen?.isPrimary ? 'Monitor 1' : 'Projetor (Tela 2)'}</span>
                 </button>
               </div>
@@ -267,14 +287,26 @@ export function TelasModal({
                   onStartProjection();
                   onClose();
                 }}
-                className="p-3.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-amber-500/40 hover:bg-neutral-800/80 transition-all cursor-pointer group flex items-start gap-3.5"
+                className="p-3.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 transition-all cursor-pointer group flex items-start gap-3.5 hover:bg-neutral-800/80"
+                style={{
+                  borderColor: 'transparent'
+                }}
               >
-                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-neutral-950 transition-colors shrink-0">
+                <div 
+                  className="p-2.5 rounded-xl transition-colors shrink-0"
+                  style={{
+                    backgroundColor: `${accent.hex}20`,
+                    color: accent.hex,
+                  }}
+                >
                   <Monitor className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                    <span 
+                      className="text-sm font-bold text-white transition-colors"
+                      style={{ color: undefined }}
+                    >
                       Projeção Nesta Tela
                     </span>
                     <span className="text-[10px] uppercase font-bold text-neutral-400 bg-neutral-800 px-2 py-0.5 rounded">
@@ -322,7 +354,7 @@ export function TelasModal({
                 {remoteRoomId && (
                   <div className="flex items-center justify-between bg-neutral-950/60 px-3 py-1.5 rounded-xl border border-neutral-800/60 text-xs">
                     <span className="text-neutral-400">Código da Sala:</span>
-                    <span className="font-mono font-bold text-amber-400 text-sm tracking-widest">{remoteRoomId}</span>
+                    <span className="font-mono font-bold text-sm tracking-widest" style={{ color: accent.hex }}>{remoteRoomId}</span>
                   </div>
                 )}
               </div>

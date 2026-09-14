@@ -1,23 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Edit2, Check, X } from 'lucide-react';
-import { Collection, Song } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
-interface HomeHeroProps {
-  collections?: Collection[];
-  songs?: Song[];
-  searchQuery?: string;
-  onSearchChange?: (query: string) => void;
-  onSelectSong?: (song: Song) => void;
-  onSelectCollection?: (collection: Collection) => void;
-  onOpenFavorites?: () => void;
-  onProjectSong?: (song: Song) => void;
-  favorites?: string[];
-  onToggleFavorite?: (songId: string) => void;
-  onNavigateToMedia?: () => void;
-}
+export function HomeHero() {
+  const { accent } = useTheme();
 
-export function HomeHero({}: HomeHeroProps) {
   // Live Clock State
   const [timeString, setTimeString] = useState('');
   
@@ -62,20 +50,23 @@ export function HomeHero({}: HomeHeroProps) {
     <div className="relative h-full w-full flex flex-col items-center justify-center text-white px-4 sm:px-6 py-4 select-none overflow-hidden">
       {/* Background Radial Glow */}
       <div 
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none transition-all duration-700 ease-out"
         style={{
-          background: 'radial-gradient(circle at 50% 45%, rgba(245, 158, 11, 0.08) 0%, rgba(18, 18, 20, 0) 65%)'
+          background: `radial-gradient(circle at 50% 45%, ${accent.hex}18 0%, transparent 65%)`
         }}
       />
 
       {/* Main Central Stage Display */}
       <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-3xl z-10 space-y-4">
-        {/* Church & District Headers (No logo above) */}
-        <div className="relative group cursor-pointer" onClick={() => {
-          setTempDistrict(districtName);
-          setTempChurch(churchName);
-          setIsEditingChurch(true);
-        }}>
+        {/* Church & District Headers */}
+        <div 
+          className="relative group cursor-pointer" 
+          onClick={() => {
+            setTempDistrict(districtName);
+            setTempChurch(churchName);
+            setIsEditingChurch(true);
+          }}
+        >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white flex items-center justify-center gap-3">
             {districtName}
             <button
@@ -85,7 +76,7 @@ export function HomeHero({}: HomeHeroProps) {
                 setTempChurch(churchName);
                 setIsEditingChurch(true);
               }}
-              className="opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-amber-400 transition-opacity rounded-lg hover:bg-neutral-800"
+              className="opacity-70 hover:opacity-100 p-1.5 text-neutral-400 hover:text-white transition-all rounded-lg hover:bg-neutral-800/80 cursor-pointer"
               title="Editar nomes"
             >
               <Edit2 className="w-4 h-4" />
@@ -96,17 +87,18 @@ export function HomeHero({}: HomeHeroProps) {
           </p>
         </div>
 
-        {/* Live Digital Clock (Large Amber Glowing Font matching reference image) */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="pt-2"
-        >
-          <span className="font-mono text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold text-amber-400 tracking-widest drop-shadow-[0_0_25px_rgba(245,158,11,0.35)]">
+        {/* Live Digital Clock */}
+        <div className="pt-2">
+          <span 
+            className="font-mono text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-widest transition-colors duration-500 select-none"
+            style={{
+              color: accent.hex,
+              filter: `drop-shadow(0 0 25px ${accent.hex}70)`
+            }}
+          >
             {timeString || '11:33:51'}
           </span>
-        </motion.div>
+        </div>
       </div>
 
       {/* Edit Church Info Modal */}
@@ -126,12 +118,12 @@ export function HomeHero({}: HomeHeroProps) {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Edit2 className="w-4 h-4 text-amber-400" />
+                  <Edit2 className="w-4 h-4" style={{ color: accent.hex }} />
                   Identificação da Igreja
                 </h3>
                 <button
                   onClick={() => setIsEditingChurch(false)}
-                  className="p-1 rounded-lg text-neutral-400 hover:text-white"
+                  className="p-1 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -147,7 +139,8 @@ export function HomeHero({}: HomeHeroProps) {
                     value={tempDistrict}
                     onChange={(e) => setTempDistrict(e.target.value)}
                     placeholder="Ex: Distrito de Cohab"
-                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm focus:border-amber-400 outline-none"
+                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
+                    style={{ borderColor: `${accent.hex}40` }}
                   />
                 </div>
 
@@ -160,16 +153,18 @@ export function HomeHero({}: HomeHeroProps) {
                     value={tempChurch}
                     onChange={(e) => setTempChurch(e.target.value)}
                     placeholder="Ex: Igreja Parque do Sol"
-                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm focus:border-amber-400 outline-none"
+                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
+                    style={{ borderColor: `${accent.hex}40` }}
                   />
                 </div>
 
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm"
+                    className="flex-1 py-2.5 text-neutral-950 font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm cursor-pointer hover:brightness-110"
+                    style={{ backgroundColor: accent.hex }}
                   >
-                    <Check className="w-4 h-4" />
+                    <Check className="w-4 h-4 stroke-[3]" />
                     Salvar Dados
                   </button>
                   <button
@@ -178,7 +173,7 @@ export function HomeHero({}: HomeHeroProps) {
                       setTempDistrict('Distrito de Cohab');
                       setTempChurch('Igreja Parque do Sol');
                     }}
-                    className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition-colors"
+                    className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     Restaurar Padrão
                   </button>

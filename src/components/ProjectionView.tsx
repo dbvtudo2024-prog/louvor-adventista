@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
+  Minus,
   Play, 
   Pause, 
   SkipBack, 
@@ -9,20 +10,21 @@ import {
   Maximize2, 
   Minimize2,
   Monitor,
-  ChevronRight,
-  ChevronLeft,
-  Save,
-  Loader2,
   Volume2,
   VolumeX,
   Tv,
-  Link as LinkIcon,
-  Copy,
-  Check
+  Palette,
+  Mic,
+  Sliders,
+  PanelRight,
+  PanelRightClose,
+  Pencil
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
+import { useTheme } from '../context/ThemeContext';
 import { BibleProjectionScreen, SorteioProjectionScreen } from './SpecialProjections';
+import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection } from '../utils/projectionSync';
 
 interface ProjectionViewProps {
   song: Song;
@@ -30,6 +32,7 @@ interface ProjectionViewProps {
   isPlaying: boolean;
   onTogglePlay: () => void;
   onUpdateSong?: (updatedSong: Partial<Song>) => Promise<void>;
+  onOpenSlideEditor?: (song: Song) => void;
   audioElement?: HTMLAudioElement;
   remoteRoomId?: string | null;
   fontFamily?: 'serif' | 'montserrat' | 'opensans';
@@ -40,83 +43,145 @@ export function ProjectionView({
   onClose, 
   isPlaying, 
   onTogglePlay, 
-  onUpdateSong, 
+  onOpenSlideEditor,
   audioElement, 
   remoteRoomId,
-  fontFamily = 'serif'
+  fontFamily: initialFontFamily = 'opensans'
 }: ProjectionViewProps) {
+  const { accent, isDarkMode } = useTheme();
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
+  const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>(initialFontFamily);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const [showRemoteInfo, setShowRemoteInfo] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
-  const [isAutoAdvance, setIsAutoAdvance] = useState(true);
-  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(5);
-  const [isSavingTiming, setIsSavingTiming] = useState(false);
+  const [isSlideListOpen, setIsSlideListOpen] = useState(true);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [volume, setVolume] = useState(audioElement?.volume ?? 1);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
+
   const wakeLockRef = useRef<any>(null);
   const externalWindowRef = useRef<Window | null>(null);
-  
   const channelRef = useRef<BroadcastChannel | null>(null);
   const currentIndexRef = useRef(currentPhraseIndex);
+  const slideListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     currentIndexRef.current = currentPhraseIndex;
   }, [currentPhraseIndex]);
 
   const safePostMessage = useCallback((message: any) => {
+    const enrichedMessage = {
+      ...message,
+      song: message.song || song
+    };
     if (channelRef.current) {
       try {
-        channelRef.current.postMessage(message);
+        channelRef.current.postMessage(enrichedMessage);
       } catch (e) {
-        // Only log if it's not a "closed" error
         if (!(e instanceof Error && e.message.includes('closed'))) {
           console.error('Error posting message to channel:', e);
         }
       }
     }
-  }, []);
+    // Universal broadcast to external projection window and localStorage
+    broadcastToProjection(enrichedMessage);
+  }, [song]);
 
+  // Multi-screen detection: open lyrics on secondary screen in fullscreen if available
+  const openLyricsOnSecondScreen = useCallback(async () => {
+    try {
+      try {
+        localStorage.setItem('projection_current_song', JSON.stringify(song));
+      } catch (e) {}
+      broadcastToProjection({ type: 'PROJECT_SONG', song, index: currentPhraseIndex || 0 });
+
+      const win = await openSecondaryProjectionWindow(song);
+      if (win) {
+        externalWindowRef.current = win;
+        setIsExternalWindowOpen(true);
+        return win;
+      }
+    } catch (err) {
+      console.warn('Screen details check:', err);
+    }
+    return null;
+  }, [song, currentPhraseIndex]);
+
+  // Open external window manually (on click of 2nd screen button)
+  const handleOpenExternal = async () => {
+    try {
+      localStorage.setItem('projection_current_song', JSON.stringify(song));
+    } catch (e) {}
+    broadcastToProjection({ type: 'PROJECT_SONG', song, index: currentPhraseIndex || 0 });
+
+    const win = await openLyricsOnSecondScreen();
+    if (!win) {
+      // Fallback: open window on side
+      const url = `${window.location.origin}/?project=true&songId=${song.id}&fullscreen=true`;
+      const fallbackWin = window.open(url, `secondary_lyrics_${song.id}`, 'width=1280,height=720,menubar=no,status=no,toolbar=no');
+      if (fallbackWin) {
+        externalWindowRef.current = fallbackWin;
+        setIsExternalWindowOpen(true);
+      }
+    }
+  };
+
+  // Attempt automatic second screen opening when mounted
+  useEffect(() => {
+    openLyricsOnSecondScreen().catch(err => {
+      console.warn('Auto screen projection check skipped:', err);
+    });
+  }, [openLyricsOnSecondScreen]);
+
+  // Wake Lock for screen staying awake
   useEffect(() => {
     const requestWakeLock = async () => {
       try {
         if ('wakeLock' in navigator) {
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         }
-      } catch (err) {
-        if (err instanceof Error && err.name !== 'NotAllowedError') {
-          console.error('Wake Lock error:', err);
-        }
-      }
+      } catch (err) {}
     };
 
-    requestWakeLock().catch(err => console.error('Error requesting wake lock:', err));
-
-    const handleVisibilityChange = () => {
-      if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
-        requestWakeLock().catch(err => console.error('Error requesting wake lock on visibility change:', err));
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    requestWakeLock().catch(() => {});
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (wakeLockRef.current) {
-        wakeLockRef.current.release();
+        try {
+          wakeLockRef.current.release().catch(() => {});
+        } catch (e) {}
         wakeLockRef.current = null;
       }
       if (externalWindowRef.current) {
-        externalWindowRef.current.close();
+        try {
+          externalWindowRef.current.close();
+        } catch (e) {}
         externalWindowRef.current = null;
       }
     };
   }, []);
 
+  // Broadcast Channel setup and instant synchronization
   useEffect(() => {
+    try {
+      localStorage.setItem('projection_current_song', JSON.stringify(song));
+    } catch (e) {}
+
+    safePostMessage({ type: 'PROJECT_SONG', song, index: currentPhraseIndex || 0 });
+    safePostMessage({ type: 'SYNC_FONT', fontFamily });
+
+    const unsubscribe = subscribeToProjection((event) => {
+      if (event.type === 'REQUEST_SYNC') {
+        safePostMessage({
+          type: 'PROJECT_SONG',
+          song,
+          index: currentIndexRef.current,
+          fontFamily
+        });
+      }
+    });
+
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel(`projection-${song.id}`);
       channelRef.current = channel;
@@ -125,36 +190,34 @@ export function ProjectionView({
         if (event.data.type === 'SYNC_INDEX') {
           setCurrentPhraseIndex(event.data.index);
         } else if (event.data.type === 'REQUEST_SYNC') {
-          safePostMessage({ type: 'SYNC_INDEX', index: currentIndexRef.current });
+          safePostMessage({ 
+            type: 'PROJECT_SONG', 
+            song, 
+            index: currentIndexRef.current, 
+            fontFamily 
+          });
         }
       };
-
-      // Force reset to 0 on mount and sync any external windows
-      setCurrentPhraseIndex(0);
-      safePostMessage({ type: 'SYNC_INDEX', index: 0 });
-      safePostMessage({ type: 'SONG_UPDATED', song });
-      safePostMessage({ type: 'SYNC_FONT', fontFamily });
 
       return () => {
         channel.close();
         channelRef.current = null;
+        unsubscribe();
       };
     }
-  }, [song.id, safePostMessage, song]);
 
-  useEffect(() => {
-    safePostMessage({ type: 'SYNC_FONT', fontFamily });
-  }, [fontFamily, safePostMessage]);
+    return () => {
+      unsubscribe();
+    };
+  }, [song.id, safePostMessage, song, fontFamily]);
 
-  const phrasesWithTimings = useMemo(() => {
+  // Lyrics / Phrases Parsing
+  const phrases = useMemo(() => {
     if (!song) return [];
     let lyrics = song.lyrics || '';
     
     // Check for custom title timing [T:seconds]
     const titleTimingMatch = lyrics.match(/^\[T:(\d+(?:[.,]\d+)?)\](.*)/);
-    const titleTiming = titleTimingMatch ? parseFloat(titleTimingMatch[1].replace(',', '.')) : autoAdvanceSeconds;
-    
-    // Remove the entire first line if it contains the [T:...] tag
     const lyricsToParse = titleTimingMatch ? lyrics.replace(/^\[T:\d+(?:[.,]\d+)?\].*\n?/, '') : lyrics;
     
     const lines = lyricsToParse
@@ -162,7 +225,7 @@ export function ProjectionView({
       .map(line => line.trim())
       .filter(line => line.length > 0 || line.match(/^\[(\d+(?:[.,]\d+)?)\]$/));
     
-    // Check if the new first line is the same as the title to avoid duplication
+    // Avoid repeating title as first lyric line
     const firstLine = lines.length > 0 ? lines[0] : '';
     const firstLineContent = firstLine.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/)?.[2] || firstLine;
     
@@ -173,17 +236,12 @@ export function ProjectionView({
 
     const parsed = linesToProcess.map(line => {
       const match = line.match(/^\[(\d+(?:[.,]\d+)?)\]\s*(.*)/);
-      if (match) {
-        return { timing: parseFloat(match[1].replace(',', '.')), text: match[2] };
-      }
-      return { timing: autoAdvanceSeconds, text: line };
+      if (match) return match[2];
+      return line;
     });
 
-    const allPhrases = [{ timing: titleTiming, text: song.title || 'Sem Título' }, ...parsed];
-    return [...allPhrases, { timing: 0, text: '' }];
-  }, [song?.lyrics, song?.title, autoAdvanceSeconds]);
-
-  const phrases = useMemo(() => phrasesWithTimings.map(p => p.text), [phrasesWithTimings]);
+    return [song.title || 'Sem Título', ...parsed];
+  }, [song?.lyrics, song?.title]);
 
   const nextPhrase = useCallback(() => {
     if (currentPhraseIndex < phrases.length - 1) {
@@ -206,94 +264,64 @@ export function ProjectionView({
     safePostMessage({ type: 'SYNC_INDEX', index: idx });
   }, [safePostMessage]);
 
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') nextPhrase();
-      if (e.key === 'ArrowLeft') prevPhrase();
-      if (e.key === 'Escape') {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        nextPhrase();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        prevPhrase();
+      } else if (e.key === 'Escape') {
         if (document.fullscreenElement) {
           document.exitFullscreen().catch(() => {});
         } else {
-          setShowConfirmClose(true);
+          onClose();
         }
+      } else if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIsSlideListOpen(prev => !prev);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nextPhrase, prevPhrase, isFullscreen]);
+  }, [nextPhrase, prevPhrase, onClose]);
 
-  useEffect(() => {
-    let timeout: any;
-    if (isAutoAdvance && isPlaying && currentPhraseIndex < phrases.length - 1) {
-      const currentTiming = phrasesWithTimings[currentPhraseIndex]?.timing || autoAdvanceSeconds;
-      timeout = setTimeout(() => {
-        nextPhrase();
-      }, currentTiming * 1000);
-    }
-    return () => clearTimeout(timeout);
-  }, [isAutoAdvance, isPlaying, currentPhraseIndex, phrases.length, nextPhrase, autoAdvanceSeconds, phrasesWithTimings]);
-
+  // Audio synchronization
   useEffect(() => {
     if (!audioElement) return;
 
-    const handleTimeUpdate = () => setAudioCurrentTime(audioElement.currentTime);
-    const handleLoadedMetadata = () => setAudioDuration(audioElement.duration);
+    const updateTimes = () => {
+      setAudioCurrentTime(audioElement.currentTime);
+      setAudioDuration(audioElement.duration || 0);
+    };
 
-    audioElement.addEventListener('timeupdate', handleTimeUpdate);
-    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+    const handleEnded = () => {
+      // Finished playing
+    };
 
-    // Initial values
-    setAudioCurrentTime(audioElement.currentTime);
-    setAudioDuration(audioElement.duration || 0);
-    setVolume(audioElement.volume);
+    audioElement.addEventListener('timeupdate', updateTimes);
+    audioElement.addEventListener('loadedmetadata', updateTimes);
+    audioElement.addEventListener('ended', handleEnded);
 
     return () => {
-      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
-      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioElement.removeEventListener('timeupdate', updateTimes);
+      audioElement.removeEventListener('loadedmetadata', updateTimes);
+      audioElement.removeEventListener('ended', handleEnded);
     };
   }, [audioElement]);
 
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const handleVolumeChange = (newVolume: number) => {
-    if (audioElement) {
-      audioElement.volume = newVolume;
-      setVolume(newVolume);
-    }
+    const val = Math.max(0, Math.min(1, newVolume));
+    setVolume(val);
+    if (audioElement) audioElement.volume = val;
   };
 
-  const handleSaveTiming = async () => {
-    if (!onUpdateSong) return;
-    setIsSavingTiming(true);
-    try {
-      // Update all lines that don't have timing or update all to this new default
-      const lines = (song.lyrics || '').split('\n');
-      const newLyrics = lines.map(line => {
-        const match = line.match(/^\[(\d+)\]\s*(.*)/);
-        const content = match ? match[2] : line;
-        return `[${autoAdvanceSeconds}] ${content}`;
-      }).join('\n');
-      
-      await onUpdateSong({ lyrics: newLyrics });
-      alert('Tempo salvo com sucesso em todos os slides!');
-    } catch (err) {
-      console.error('Erro ao salvar tempo:', err);
-      alert('Erro ao salvar tempo.');
-    } finally {
-      setIsSavingTiming(false);
-    }
-  };
   const toggleFullscreen = () => {
-    const elem = document.getElementById('projection-content');
-    if (!elem) return;
-
     if (!document.fullscreenElement) {
-      elem.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
       document.exitFullscreen().catch(() => {});
@@ -301,43 +329,34 @@ export function ProjectionView({
     }
   };
 
-  const openExternalWindow = () => {
-    const width = 1280;
-    const height = 720;
-    const left = (window.screen.width / 2) - (width / 2);
-    const top = (window.screen.height / 2) - (height / 2);
-    
-    // We open the same app with a special query param
-    const url = `${window.location.origin}${window.location.pathname}?project=true&songId=${song.id}`;
-    const externalWindow = window.open(
-      url, 
-      `projection_window_${song.id}`, 
-      `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-    );
-    
-    if (externalWindow) {
-      externalWindowRef.current = externalWindow;
-      setIsExternalWindowOpen(true);
-    } else {
-      alert('O bloqueador de pop-ups impediu a abertura da tela de projeção. Por favor, autorize pop-ups para este site.');
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const cycleFontFamily = () => {
+    const next = fontFamily === 'opensans' ? 'montserrat' : fontFamily === 'montserrat' ? 'serif' : 'opensans';
+    setFontFamily(next);
+    safePostMessage({ type: 'SYNC_FONT', fontFamily: next });
+  };
+
+  // Scroll active slide into view in the sidebar
+  useEffect(() => {
+    if (slideListRef.current) {
+      const activeEl = slideListRef.current.querySelector(`[data-slide-index="${currentPhraseIndex}"]`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
-  };
+  }, [currentPhraseIndex]);
 
-  const copyRemoteUrl = () => {
-    if (!remoteRoomId) return;
-    const url = `${window.location.origin}${window.location.pathname}?tv=${remoteRoomId}`;
-    navigator.clipboard.writeText(url).catch(err => {
-      console.error('Erro ao copiar URL:', err);
-    });
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const isBible = song.category === 'Bíblia' || song.collection_id === 'biblia' || song.id.startsWith('bible-');
-  const isSorteio = song.id === 'sorteio-projection' || song.category === 'sorteio' || song.collection_id === 'utilitarios';
+  const isBible = song?.category === 'Bíblia' || song?.collection_id === 'biblia' || song?.id?.startsWith('bible-');
+  const isSorteio = song?.id === 'sorteio-projection' || song?.category === 'sorteio' || song?.collection_id === 'utilitarios';
 
   const sorteioData = useMemo(() => {
-    if (!isSorteio) return { winner: '1', winners: [] as any[] };
+    if (!isSorteio || !song) return { winner: '1', winners: [] as any[] };
     let winner = song.lyrics || '1';
     let winners: any[] = [];
     try {
@@ -348,438 +367,416 @@ export function ProjectionView({
       }
     } catch (e) {}
 
-    if (winners.length === 0) {
-      try {
-        const raw = localStorage.getItem('projection_sorteio_data');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.winner !== undefined) winner = String(parsed.winner);
-          if (Array.isArray(parsed.winners)) winners = parsed.winners;
-        }
-      } catch (e) {}
-    }
     return { winner, winners };
   }, [isSorteio, song.lyrics, song.author]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black flex flex-col md:flex-row overflow-hidden">
-      {/* Projection Screen (The "Big" Screen) */}
+    <div 
+      className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden select-none font-sans"
+      onClick={onClose}
+    >
       <div 
-        id="projection-content"
-        className={cn(
-          "h-[40vh] min-h-[40vh] flex-shrink-0 md:h-auto md:min-h-0 md:flex-1 relative overflow-hidden group flex items-center justify-center",
-          isBible ? "bg-[#0b0d14] p-0" : isSorteio ? "bg-black p-0" : "bg-black p-6 md:p-12"
-        )}
+        className="w-full max-w-7xl h-[92vh] max-h-[920px] bg-[#070a14] border border-neutral-800/90 rounded-3xl shadow-2xl flex flex-row overflow-hidden relative"
+        onClick={(e) => e.stopPropagation()}
       >
-        {isBible ? (
-          <BibleProjectionScreen 
-            verseText={song.lyrics} 
-            reference={song.title || song.author || ''} 
-          />
-        ) : isSorteio ? (
-          <SorteioProjectionScreen 
-            winner={sorteioData.winner}
-            winnersList={sorteioData.winners}
-          />
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentPhraseIndex}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="flex flex-col items-center gap-4 md:gap-8 z-10"
-            >
-              <div
-                className={cn(
-                  "text-center italic select-none drop-shadow-2xl transition-colors duration-500",
-                  currentPhraseIndex === 0 
-                    ? "text-brand-secondary not-italic font-bold" 
-                    : "text-white",
-                  fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
-                )}
-                style={{ fontSize: 'clamp(1.5rem, 8vw, 6rem)', lineHeight: '1.2' }}
-              >
-                {phrases[currentPhraseIndex] || ''}
-              </div>
-              
-              {/* Next Phrase Preview */}
-              {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
-                <div 
-                  className={cn(
-                    "text-center italic select-none opacity-20 transition-all duration-500",
-                    fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
-                  )}
-                  style={{ fontSize: 'clamp(1rem, 4vw, 3rem)', lineHeight: '1.2' }}
-                >
-                  {phrases[currentPhraseIndex + 1]}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        )}
+        {/* 1. LEFT: MAIN STAGE (EXACT REPLICA OF IMAGEM 3) */}
+        <div className="flex-1 relative flex flex-col justify-between p-6 sm:p-10 min-w-0 overflow-hidden">
+        {/* Subtle stage radial vignette tinted with theme accent */}
+        <div 
+          className="absolute inset-0 pointer-events-none transition-all duration-700"
+          style={{
+            background: `radial-gradient(circle at 50% 45%, ${accent.hex}22 0%, rgba(14, 28, 54, 0.4) 40%, rgba(5, 8, 17, 0.95) 80%)`
+          }}
+        />
 
-        {/* Controls Overlay (Always visible on mobile, hover on desktop) */}
-        <div className="absolute bottom-4 right-4 flex gap-2 z-30 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          {remoteRoomId && (
-            <button 
-              onClick={() => setShowRemoteInfo(true)}
-              className="p-3 bg-[#F27D26]/20 hover:bg-[#F27D26]/40 active:bg-[#F27D26]/60 rounded-full text-[#F27D26] transition-all backdrop-blur-sm border border-[#F27D26]/30"
-              title="Projetar na Smart TV"
+        {/* TOP ROW */}
+        <div className="flex items-center justify-between w-full z-20">
+          {/* Top Left Window Control Pill (Image 3) */}
+          <div className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full px-3.5 py-1.5 flex items-center gap-3 backdrop-blur-md shadow-lg">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              title="Minimizar (ESC)"
             >
-              <Tv className="w-5 h-5 md:w-6 md:h-6" />
+              <Minus className="w-4 h-4" />
             </button>
-          )}
-          <button 
-            onClick={openExternalWindow}
-            className="p-3 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-            title="Abrir em nova janela"
-          >
-            <Monitor className="w-5 h-5 md:w-6 md:h-6" />
-          </button>
-          <button 
-            onClick={toggleFullscreen}
-            className="p-3 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-            title="Tela Cheia"
-          >
-            {isFullscreen ? <Minimize2 className="w-5 h-5 md:w-6 md:h-6" /> : <Maximize2 className="w-5 h-5 md:w-6 md:h-6" />}
-          </button>
+            <div className="w-[1px] h-3.5 bg-neutral-700/60" />
+            <button
+              type="button"
+              onClick={() => {
+                if (audioElement) {
+                  audioElement.pause();
+                  audioElement.currentTime = 0;
+                }
+                onClose();
+              }}
+              className="text-neutral-400 hover:text-red-400 transition-colors cursor-pointer"
+              title="Encerrar Projeção"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Top Right Status & Tool Pill (Image 3) */}
+          <div className="flex items-center gap-2">
+            <div className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full px-4 py-1.5 flex items-center gap-2.5 backdrop-blur-md shadow-lg text-[11px] text-neutral-400 font-medium">
+              <span>ESC encerra a projeção</span>
+              <span className="opacity-40">•</span>
+              <span>Ctrl+Alt+P alterna com a tela do operador</span>
+            </div>
+
+            {/* Typography / Palette button */}
+            <button
+              type="button"
+              onClick={cycleFontFamily}
+              className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full p-2 text-neutral-400 hover:text-white transition-colors backdrop-blur-md shadow-lg cursor-pointer"
+              title={`Fonte: ${fontFamily === 'serif' ? 'Serif' : fontFamily === 'montserrat' ? 'Montserrat' : 'Open Sans'} (Clique para alternar)`}
+            >
+              <Palette className="w-4 h-4" />
+            </button>
+
+            {/* Slide Editor button */}
+            {onOpenSlideEditor && (
+              <button
+                type="button"
+                onClick={() => onOpenSlideEditor(song)}
+                className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full px-3 py-1.5 text-neutral-300 hover:text-amber-400 transition-colors backdrop-blur-md shadow-lg cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                title="Editar Slides (Imagem 1)"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Editar Slides</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Operator Control Panel */}
-      <div className="w-full md:w-[420px] bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl z-10 flex-1 min-h-0">
-        <div className="p-3 md:p-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex flex-col">
-            <h3 className="text-white font-bold text-sm truncate max-w-[180px] md:max-w-[250px]">{song.title}</h3>
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest">Painel do Operador</span>
-          </div>
-          <button 
-            onClick={() => setShowConfirmClose(true)}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Dynamic Content Panel */}
-        {isBible ? (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200">
-              <span className="text-[11px] font-bold uppercase tracking-wider block text-amber-400 mb-2">
-                Versículo Ativo no Telão
-              </span>
-              <p className="text-sm font-medium text-white leading-relaxed italic">
-                "{song.lyrics}"
-              </p>
-              <span className="text-xs font-bold text-[#facc15] mt-3 block font-sans uppercase tracking-wider">
-                {song.title}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-xs text-slate-400">
-              💡 Para trocar de versículo, selecione outro versículo no menu da Bíblia ou clique para projetar.
-            </div>
-          </div>
-        ) : isSorteio ? (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
-            <div className="p-5 rounded-2xl bg-neutral-900 border border-amber-500/30 text-center">
-              <span className="text-xs font-bold tracking-widest uppercase text-amber-400 block mb-1">
-                Número Contemplado
-              </span>
-              <span className="text-6xl font-black text-[#0ea5e9] block my-3 drop-shadow-md">
-                {sorteioData.winner}
-              </span>
-              <span className="text-xs text-neutral-400 block">
-                Total de números sorteados: {sorteioData.winners.length}
-              </span>
-            </div>
-          </div>
-        ) : (
-          /* Lyrics Sequence */
-          <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1 md:space-y-2 scrollbar-hide bg-slate-950/50">
-            {phrases.map((phrase, idx) => (
-              <button
-                key={idx}
-                onClick={() => setIndex(idx)}
-                className={cn(
-                  "w-full text-left p-3 md:p-4 rounded-xl transition-all border",
-                  idx === currentPhraseIndex 
-                    ? "bg-brand-primary border-brand-primary text-white shadow-lg scale-[1.02]" 
-                    : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono opacity-50">{idx === 0 ? 'T' : idx}</span>
-                  <span className={cn(
-                    "text-sm font-medium leading-tight",
-                    idx === 0 && "text-brand-secondary font-bold"
-                  )}>
-                    {phrase || <span className="italic opacity-50">(Slide Vazio)</span>}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Playback Controls */}
-        <div className="p-3 md:p-4 bg-slate-900 border-t border-white/10 space-y-3 md:space-y-4">
-          {isBible || isSorteio ? (
-            <div className="space-y-2.5">
-              <button
-                onClick={openExternalWindow}
-                className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors border border-white/10"
-              >
-                <Monitor className="w-4 h-4 text-sky-400" />
-                Abrir na 2ª Tela (Janela Externa)
-              </button>
-              <button
-                onClick={toggleFullscreen}
-                className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
-              >
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                {isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia Imediata'}
-              </button>
-              <button
-                onClick={onClose}
-                className="w-full py-2 px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors border border-red-500/30"
-              >
-                <X className="w-4 h-4" />
-                Fechar Projeção
-              </button>
-            </div>
+        {/* CENTER LYRIC / PROJECTION STAGE (Image 3) */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 sm:px-8 my-auto z-10">
+          {isBible ? (
+            <BibleProjectionScreen 
+              verseText={song.lyrics} 
+              reference={song.title || song.author || ''} 
+            />
+          ) : isSorteio ? (
+            <SorteioProjectionScreen 
+              winner={sorteioData.winner} 
+              winnersList={sorteioData.winners}
+            />
           ) : (
-            <>
-              {audioElement && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
-                    <span>{formatTime(audioCurrentTime)}</span>
-                    <span>{formatTime(audioDuration)}</span>
-                  </div>
-                  <div 
-                    className="h-1 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = e.clientX - rect.left;
-                      const percentage = x / rect.width;
-                      audioElement.currentTime = percentage * audioDuration;
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentPhraseIndex}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.04 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="max-w-5xl w-full flex flex-col items-center justify-center"
+              >
+                {/* Main Phrase in Giant Bold Accent Color (Image 3) */}
+                <h1
+                  className={cn(
+                    "text-center font-black uppercase tracking-tight select-none leading-[1.1] transition-all duration-300",
+                    fontFamily === 'serif' ? 'font-serif' : fontFamily === 'montserrat' ? 'font-montserrat font-black' : 'font-opensans font-black'
+                  )}
+                  style={{
+                    fontSize: 'clamp(2.25rem, 6vw, 6.5rem)',
+                    color: accent.hex,
+                    filter: `drop-shadow(0 4px 30px ${accent.hex}55)`
+                  }}
+                >
+                  {phrases[currentPhraseIndex] || song.title}
+                </h1>
+
+                {/* Next Phrase Preview Below */}
+                {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
+                  <p 
+                    className={cn(
+                      "text-white/25 text-center mt-6 select-none font-medium italic transition-opacity leading-snug",
+                      fontFamily === 'serif' ? 'font-serif' : 'font-sans'
+                    )}
+                    style={{
+                      fontSize: 'clamp(1rem, 2.5vw, 2rem)',
                     }}
                   >
-                    <motion.div 
-                      className="h-full bg-sky-400 rounded-full"
-                      initial={false}
-                      animate={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
-                      transition={{ type: "spring", bounce: 0, duration: 0.2 }}
-                    />
-                  </div>
-                </div>
-              )}
+                    {phrases[currentPhraseIndex + 1]}
+                  </p>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
 
-              <div className="flex flex-col gap-1.5 md:gap-3">
-                {/* Volume Control */}
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => handleVolumeChange(volume === 0 ? 1 : 0)}
-                    className="text-slate-400 hover:text-white transition-colors"
-                  >
-                    {volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                  </button>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="1" 
-                    step="0.01"
+        {/* BOTTOM FLOATING PLAYER BAR (Image 3) */}
+        <div className="w-full max-w-4xl mx-auto bg-[#14161f]/95 backdrop-blur-xl border border-neutral-700/70 rounded-full px-5 py-2.5 shadow-2xl flex items-center justify-between gap-4 z-30">
+          {/* Left: Song Meta */}
+          <div className="flex flex-col min-w-0 max-w-[170px] sm:max-w-[220px]">
+            <span className="text-white font-bold text-xs sm:text-sm truncate">
+              {song.title}
+            </span>
+            <span className="text-neutral-400 text-[10px] sm:text-[11px] truncate">
+              {song.album_name || song.author || song.title}
+            </span>
+          </div>
+
+          {/* Center: Playback Controls & Scrubber */}
+          <div className="flex-1 flex items-center justify-center gap-3 sm:gap-4 max-w-xl">
+            {/* Previous */}
+            <button
+              type="button"
+              onClick={prevPhrase}
+              disabled={currentPhraseIndex === 0}
+              className="text-neutral-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer p-1"
+              title="Slide Anterior"
+            >
+              <SkipBack className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
+            </button>
+
+            {/* Play / Pause */}
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-neutral-950 flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
+              title={isPlaying ? "Pausar" : "Tocar"}
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4 fill-current" />
+              ) : (
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              )}
+            </button>
+
+            {/* Next */}
+            <button
+              type="button"
+              onClick={nextPhrase}
+              disabled={currentPhraseIndex >= phrases.length - 1}
+              className="text-neutral-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer p-1"
+              title="Próximo Slide"
+            >
+              <SkipForward className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
+            </button>
+
+            {/* Current Time */}
+            <span className="text-[10px] sm:text-xs font-mono text-neutral-400 shrink-0">
+              {formatTime(audioCurrentTime)}
+            </span>
+
+            {/* Progress Scrubber Bar */}
+            <div 
+              className="flex-1 h-1.5 bg-neutral-700/60 rounded-full cursor-pointer relative group flex items-center min-w-[60px]"
+              onClick={(e) => {
+                if (audioElement && audioDuration > 0) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const pct = Math.max(0, Math.min(1, x / rect.width));
+                  audioElement.currentTime = pct * audioDuration;
+                }
+              }}
+            >
+              <div 
+                className="h-full bg-white rounded-full relative"
+                style={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
+              >
+                {/* Circular thumb indicator matching Image 3 */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md transform translate-x-1/2 group-hover:scale-125 transition-transform" />
+              </div>
+            </div>
+
+            {/* Total Duration */}
+            <span className="text-[10px] sm:text-xs font-mono text-neutral-400 shrink-0">
+              {formatTime(audioDuration)}
+            </span>
+          </div>
+
+          {/* Right: Tools & Toggles */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Volume */}
+            <div className="relative flex items-center">
+              <button
+                type="button"
+                onClick={() => setShowVolumeSlider(!showVolumeSlider)}
+                className="text-neutral-400 hover:text-white transition-colors p-1 cursor-pointer"
+                title="Volume"
+              >
+                {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+
+              {showVolumeSlider && (
+                <div className="absolute bottom-10 right-0 bg-[#16161a] border border-neutral-700 rounded-xl p-3 shadow-xl flex flex-col items-center gap-2 w-28 z-50">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
                     value={volume}
                     onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                    className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                    className="w-full cursor-pointer"
+                    style={{ accentColor: accent.hex }}
                   />
-                  <span className="text-[9px] font-mono text-slate-400 w-7 text-right">
+                  <span className="text-[10px] font-mono text-neutral-400">
                     {Math.round(volume * 100)}%
                   </span>
                 </div>
+              )}
+            </div>
 
-                <div className="flex items-center justify-between py-0.5">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Auto-Avanço</span>
-                    <span className="text-[8px] text-slate-500 italic">Avança a cada {autoAdvanceSeconds}s</span>
-                  </div>
-                  <button 
-                    onClick={() => setIsAutoAdvance(!isAutoAdvance)}
-                    className={cn(
-                      "relative w-10 h-5 rounded-full transition-colors duration-300",
-                      isAutoAdvance ? "bg-brand-primary" : "bg-slate-700"
-                    )}
-                  >
-                    <motion.div 
-                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                      animate={{ x: isAutoAdvance ? 20 : 0 }}
-                    />
-                  </button>
-                </div>
-                
-                {isAutoAdvance && (
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="range" 
-                      min="2" 
-                      max="15" 
-                      step="1"
-                      value={autoAdvanceSeconds}
-                      onChange={(e) => setAutoAdvanceSeconds(parseInt(e.target.value))}
-                      className="flex-1 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-                    />
-                    <span className="text-[9px] font-mono text-slate-400 w-5">{autoAdvanceSeconds}s</span>
-                  </div>
-                )}
-              </div>
+            {/* Vocal / Mic Mode */}
+            <button
+              type="button"
+              onClick={() => setIsMicActive(!isMicActive)}
+              className={cn(
+                "p-1 transition-colors cursor-pointer",
+                isMicActive ? "text-white" : "text-neutral-400 hover:text-white"
+              )}
+              style={isMicActive ? { color: accent.hex } : undefined}
+              title="Voz / Microfone"
+            >
+              <Mic className="w-4 h-4" />
+            </button>
 
-              <div className="flex items-center justify-center gap-3 md:gap-5">
-                <button 
-                  onClick={prevPhrase}
-                  disabled={currentPhraseIndex === 0}
-                  className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
-                >
-                  <SkipBack className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={onTogglePlay}
-                  className="w-10 h-10 md:w-14 md:h-14 bg-brand-primary rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-transform active:scale-95"
-                >
-                  {isPlaying ? <Pause className="w-5 h-5 md:w-7 md:h-7 fill-current" /> : <Play className="w-5 h-5 md:w-7 md:h-7 fill-current ml-1" />}
-                </button>
-                <button 
-                  onClick={nextPhrase}
-                  disabled={currentPhraseIndex === phrases.length - 1}
-                  className="p-1.5 md:p-2 text-white hover:bg-white/10 rounded-full disabled:opacity-30"
-                >
-                  <SkipForward className="w-5 h-5" />
-                </button>
-              </div>
+            {/* Active Projection Indicator (Golden Amber Screen Icon in Image 3) */}
+            <button
+              type="button"
+              className="p-1 hover:brightness-110 transition-all cursor-default"
+              style={{ color: accent.hex }}
+              title="Projeção Ativa"
+            >
+              <Tv className="w-4 h-4 stroke-[2.2]" />
+            </button>
 
-              {/* Progress */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span>Progresso</span>
-                  <span>{currentPhraseIndex + 1} / {phrases.length}</span>
-                </div>
-                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-brand-primary"
-                    initial={false}
-                    animate={{ width: `${((currentPhraseIndex + 1) / phrases.length) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+            {/* Equalizer / Sliders */}
+            <button
+              type="button"
+              className="p-1 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              title="Equalizador"
+            >
+              <Sliders className="w-4 h-4" />
+            </button>
+
+            {/* 2nd Screen / Monitor Button */}
+            <button
+              type="button"
+              onClick={handleOpenExternal}
+              className={cn(
+                "p-1 transition-colors cursor-pointer",
+                isExternalWindowOpen ? "" : "text-neutral-400 hover:text-white"
+              )}
+              style={isExternalWindowOpen ? { color: accent.hex } : undefined}
+              title="Projetar na 2ª Tela (Apenas Letra em Tela Cheia)"
+            >
+              <Monitor className="w-4 h-4" />
+            </button>
+
+            {/* Fullscreen */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="p-1 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+
+            {/* Toggle Slide List Sidebar */}
+            <button
+              type="button"
+              onClick={() => setIsSlideListOpen(!isSlideListOpen)}
+              className={cn(
+                "p-1 transition-colors cursor-pointer",
+                isSlideListOpen ? "" : "text-neutral-400 hover:text-white"
+              )}
+              style={isSlideListOpen ? { color: accent.hex } : undefined}
+              title={isSlideListOpen ? "Ocultar Lista de Slides" : "Mostrar Lista de Slides"}
+            >
+              {isSlideListOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Remote Projection Info Modal */}
+      {/* 2. RIGHT: SLIDE LIST SIDEBAR (EXACT REPLICA OF IMAGEM 3) */}
       <AnimatePresence>
-        {showRemoteInfo && remoteRoomId && (
+        {isSlideListOpen && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 340, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+            className="h-full bg-[#0c0e15] border-l border-neutral-800/80 flex flex-col z-20 shrink-0 overflow-hidden"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-[#F27D26]/10 flex items-center justify-center">
-                  <Tv className="w-6 h-6 text-[#F27D26]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-serif font-bold text-brand-primary">Projetar na Smart TV</h3>
-                  <p className="text-xs text-slate-500">Siga os passos abaixo na sua TV</p>
-                </div>
+            {/* Header: LISTA DE SLIDES (Image 3) */}
+            <div className="p-4 border-b border-neutral-800/80 flex items-center justify-between shrink-0 bg-[#0c0e15]">
+              <span className="text-[11px] font-black uppercase tracking-widest text-neutral-400">
+                LISTA DE SLIDES
+              </span>
+              <div className="flex items-center gap-2">
+                {onOpenSlideEditor && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSlideEditor(song)}
+                    className="p-1 text-neutral-400 hover:text-amber-400 transition-colors cursor-pointer"
+                    title="Editar Slides (Imagem 1)"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 font-mono">
+                  {currentPhraseIndex + 1}/{phrases.length}
+                </span>
               </div>
+            </div>
 
-              <div className="space-y-6">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">1. Abra este link na TV</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono truncate">
-                      {window.location.origin}/?tv={remoteRoomId}
-                    </div>
-                    <button 
-                      onClick={copyRemoteUrl}
-                      className="p-2 bg-white rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+            {/* Scrollable Slide Items matching Image 3 */}
+            <div 
+              ref={slideListRef}
+              className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1.5"
+            >
+              {phrases.map((phrase, idx) => {
+                const isActive = idx === currentPhraseIndex;
+                const slideNum = idx + 1;
+
+                return (
+                  <div
+                    key={idx}
+                    data-slide-index={idx}
+                    onClick={() => setIndex(idx)}
+                    className={cn(
+                      "w-full rounded-xl px-3 py-2.5 flex items-center gap-3 transition-all cursor-pointer select-none text-left",
+                      isActive
+                        ? "bg-[#38241b] text-white font-bold shadow-md ring-1 ring-[#e27a3c]/60"
+                        : "hover:bg-neutral-800/60 text-neutral-300 font-normal"
+                    )}
+                  >
+                    {/* Number Badge */}
+                    <span
+                      className={cn(
+                        "w-5 text-xs font-mono shrink-0",
+                        isActive
+                          ? "text-[#e27a3c] font-bold"
+                          : "text-neutral-500"
+                      )}
                     >
-                      {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                    </button>
+                      {slideNum}
+                    </span>
+
+                    {/* Text Preview */}
+                    <span 
+                      className={cn(
+                        "text-xs sm:text-sm truncate leading-snug flex-1",
+                        isActive ? "font-bold text-white" : "font-normal text-neutral-300"
+                      )}
+                    >
+                      {phrase || <span className="italic opacity-40">(Slide Vazio)</span>}
+                    </span>
                   </div>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">2. Digite o ID da Sala</p>
-                  <div className="text-3xl font-mono font-bold text-brand-primary tracking-widest text-center py-2">
-                    {remoteRoomId}
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-400 italic text-center leading-relaxed">
-                  Dica: Você pode enviar este link para o WhatsApp e abrir no navegador da TV ou digitar manualmente.
-                </p>
-
-                <button 
-                  onClick={() => setShowRemoteInfo(false)}
-                  className="w-full py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
-                >
-                  Entendi
-                </button>
-              </div>
-            </motion.div>
+                );
+              })}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Confirmation Modal */}
-      <AnimatePresence>
-        {showConfirmClose && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl"
-            >
-              <h3 className="text-2xl font-serif font-bold text-brand-primary mb-2">Fechar Projeção?</h3>
-              <p className="text-slate-500 mb-8">Tem certeza que deseja encerrar a projeção das letras?</p>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setShowConfirmClose(false)}
-                  className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  onClick={() => {
-                    if (document.fullscreenElement) {
-                      document.exitFullscreen().catch(() => {});
-                    }
-                    onClose();
-                  }}
-                  className="flex-1 py-4 bg-brand-primary text-white rounded-2xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
-                >
-                  Sim, Fechar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
