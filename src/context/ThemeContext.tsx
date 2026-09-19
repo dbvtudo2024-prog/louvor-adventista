@@ -91,9 +91,11 @@ interface ThemeContextType {
   accent: AccentTheme;
   isDarkMode: boolean;
   interacao: 'dinamico' | 'suave' | 'nevoa';
+  isMenuInverted: boolean;
   setAccentColor: (color: AccentColor) => void;
   toggleTheme: (dark?: boolean) => void;
   setInteracao: (mode: 'dinamico' | 'suave' | 'nevoa') => void;
+  toggleMenuInverted: (inverted?: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -106,6 +108,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('app_theme') !== 'light';
+  });
+
+  const [isMenuInverted, setIsMenuInvertedState] = useState<boolean>(() => {
+    return localStorage.getItem('app_menu_inverted') === 'true';
   });
 
   const [interacao, setInteracaoState] = useState<'dinamico' | 'suave' | 'nevoa'>(() => {
@@ -187,6 +193,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (e) {}
   };
 
+  const toggleMenuInverted = (inverted?: boolean) => {
+    const next = inverted !== undefined ? inverted : !isMenuInverted;
+    setIsMenuInvertedState(next);
+    try {
+      localStorage.setItem('app_menu_inverted', String(next));
+    } catch (e) {}
+  };
+
   return (
     <ThemeContext.Provider
       value={{
@@ -194,9 +208,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         accent,
         isDarkMode,
         interacao,
+        isMenuInverted,
         setAccentColor,
         toggleTheme,
         setInteracao,
+        toggleMenuInverted,
       }}
     >
       {children}

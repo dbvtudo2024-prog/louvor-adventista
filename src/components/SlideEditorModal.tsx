@@ -142,8 +142,8 @@ export function SlideEditorModal({
 
   const [slides, setSlides] = useState<SlideData[]>(getDefaultSlides);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [activeRibbonTab, setActiveRibbonTab] = useState<RibbonTab>('slides');
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '4:3'>('16:9');
+  const [activeRibbonTab, setActiveRibbonTab] = useState<RibbonTab>('arquivo');
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '4:3' | 'tela-cheia'>('16:9');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Audio / Recording states
@@ -173,6 +173,7 @@ export function SlideEditorModal({
     if (isOpen) {
       setSlides(getDefaultSlides());
       setCurrentSlideIndex(0);
+      setActiveRibbonTab('arquivo');
       setAudioUrl(song.audio_url || null);
       setIsPlayingAudio(false);
     }
@@ -502,16 +503,6 @@ export function SlideEditorModal({
   };
 
   // --- TAB 4: VISUALIZAÇÃO HANDLERS ---
-  const handleToggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-      showToast('Tela cheia ativada.');
-    } else {
-      document.exitFullscreen?.().catch(() => {});
-      showToast('Tela cheia desativada.');
-    }
-  };
-
   const handleReplicateStyleToAll = () => {
     setSlides(prev => prev.map(s => ({
       ...s,
@@ -671,7 +662,7 @@ export function SlideEditorModal({
               <span className="text-neutral-600">|</span>
               <span className="text-amber-400">{currentSlideIndex + 1} / {slides.length}</span>
               <span className="bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded text-[11px] font-bold border border-neutral-700">
-                {aspectRatio}
+                {aspectRatio === 'tela-cheia' ? 'Tela Cheia' : aspectRatio}
               </span>
             </div>
 
@@ -1143,7 +1134,7 @@ export function SlideEditorModal({
                   onClick={() => setCurrentSlideIndex(idx)}
                   className={cn(
                     "group relative w-full rounded-xl transition-all cursor-pointer overflow-hidden p-2 flex flex-col justify-between select-none shadow-md",
-                    aspectRatio === '16:9' ? "aspect-[16/9]" : "aspect-[4/3]",
+                    aspectRatio === '16:9' ? "aspect-[16/9]" : aspectRatio === 'tela-cheia' ? "aspect-[16/10]" : "aspect-[4/3]",
                     isActive
                       ? "border-2 border-amber-500 ring-2 ring-amber-500/20 bg-black"
                       : "border border-neutral-800 hover:border-neutral-700 bg-neutral-950/80"
@@ -1222,11 +1213,11 @@ export function SlideEditorModal({
             }}
           />
 
-          {/* Responsive Canvas (16:9 or 4:3) */}
+          {/* Responsive Canvas (16:9, Tela Cheia 16:10, or 4:3) */}
           <div 
             className={cn(
               "w-full rounded-2xl shadow-2xl relative overflow-hidden flex flex-col justify-center p-8 sm:p-12 transition-all border border-neutral-800/60",
-              aspectRatio === '16:9' ? "max-w-4xl aspect-[16/9]" : "max-w-2xl aspect-[4/3]",
+              aspectRatio === '16:9' ? "max-w-4xl aspect-[16/9]" : aspectRatio === 'tela-cheia' ? "max-w-3xl aspect-[16/10]" : "max-w-2xl aspect-[4/3]",
               currentSlide.bgTransparent && "bg-[linear-gradient(45deg,#121212_25%,transparent_25%),linear-gradient(-45deg,#121212_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#121212_75%),linear-gradient(-45deg,transparent_75%,#121212_75%)] bg-[size:20px_20px] bg-[#1a1a1a]"
             )}
             style={{

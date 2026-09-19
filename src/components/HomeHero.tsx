@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Edit2, Check, X } from 'lucide-react';
+import { Edit2, Check, X, Presentation } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { broadcastToProjection, openSecondaryProjectionWindow, isProjectionWindowOpen, closeProjectionWindow } from '../utils/projectionSync';
+import { Song } from '../types';
 
 export function HomeHero() {
   const { accent } = useTheme();
@@ -19,6 +21,7 @@ export function HomeHero() {
   const [isEditingChurch, setIsEditingChurch] = useState(false);
   const [tempDistrict, setTempDistrict] = useState(districtName);
   const [tempChurch, setTempChurch] = useState(churchName);
+  const [isProjectingNotice, setIsProjectingNotice] = useState(false);
 
   // Update clock every second
   useEffect(() => {
@@ -43,7 +46,73 @@ export function HomeHero() {
     setChurchName(cleanChurch);
     localStorage.setItem('church_district', cleanDistrict);
     localStorage.setItem('church_name', cleanChurch);
+    localStorage.setItem('projection_church_data', JSON.stringify({
+      churchName: cleanChurch,
+      districtName: cleanDistrict
+    }));
+
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: {
+        id: 'church-clock-projection',
+        collection_id: 'utilitarios',
+        category: 'church-clock',
+        title: cleanChurch,
+        lyrics: cleanDistrict,
+        author: JSON.stringify({ churchName: cleanChurch, districtName: cleanDistrict })
+      }
+    });
+
     setIsEditingChurch(false);
+  };
+
+  const [isCurrentlyProjecting, setIsCurrentlyProjecting] = useState(() => {
+    return isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'church-clock-projection';
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const open = isProjectionWindowOpen();
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      setIsCurrentlyProjecting(open && currentTarget === 'church-clock-projection');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleProjectScreen = async () => {
+    if (isCurrentlyProjecting || (isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'church-clock-projection')) {
+      closeProjectionWindow();
+      setIsCurrentlyProjecting(false);
+      setIsProjectingNotice(false);
+      return;
+    }
+
+    const payloadSong: Song = {
+      id: 'church-clock-projection',
+      collection_id: 'utilitarios',
+      category: 'church-clock',
+      title: churchName,
+      lyrics: districtName,
+      author: JSON.stringify({ churchName, districtName })
+    };
+
+    try {
+      localStorage.setItem('church_name', churchName);
+      localStorage.setItem('church_district', districtName);
+      localStorage.setItem('projection_church_data', JSON.stringify({ churchName, districtName }));
+      localStorage.setItem('projection_current_song', JSON.stringify(payloadSong));
+    } catch (e) {}
+
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: payloadSong,
+      index: 0
+    });
+
+    await openSecondaryProjectionWindow(payloadSong);
+    setIsCurrentlyProjecting(true);
+    setIsProjectingNotice(true);
+    setTimeout(() => setIsProjectingNotice(false), 3000);
   };
 
   return (
@@ -58,7 +127,7 @@ export function HomeHero() {
 
       {/* Main Central Stage Display */}
       <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-3xl z-10 space-y-4">
-        {/* Church & District Headers */}
+        {/* Church & District Headers (Inverted: Church First & Larger, District Second & Smaller) */}
         <div 
           className="relative group cursor-pointer" 
           onClick={() => {
@@ -67,8 +136,9 @@ export function HomeHero() {
             setIsEditingChurch(true);
           }}
         >
+          {/* Nome da Igreja Primeiro e Maior */}
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white flex items-center justify-center gap-3">
-            {districtName}
+            {churchName}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -77,17 +147,19 @@ export function HomeHero() {
                 setIsEditingChurch(true);
               }}
               className="opacity-70 hover:opacity-100 p-1.5 text-neutral-400 hover:text-white transition-all rounded-lg hover:bg-neutral-800/80 cursor-pointer"
-              title="Editar nomes"
+              title="Editar identificação da igreja"
             >
               <Edit2 className="w-4 h-4" />
             </button>
           </h2>
-          <p className="text-base sm:text-lg md:text-xl text-neutral-300 font-medium tracking-wide mt-2">
-            {churchName}
+
+          {/* Distrito Segundo e Menor */}
+          <p className="text-base sm:text-lg md:text-xl text-neutral-300 font-medium tracking-wide mt-1.5">
+            {districtName}
           </p>
         </div>
 
-        {/* Live Digital Clock */}
+        {/* Live Digital Clock (Em Baixo) */}
         <div className="pt-2">
           <span 
             className="font-mono text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-widest transition-colors duration-500 select-none"
@@ -98,6 +170,28 @@ export function HomeHero() {
           >
             {timeString || '11:33:51'}
           </span>
+        </div>
+
+        {/* Action Button: Projetar essa área em outra tela (discreto, sem escrita) */}
+        <div className="pt-2 flex items-center justify-center">
+          <button
+            onClick={handleProjectScreen}
+            className="w-10 h-10 rounded-full bg-neutral-900/60 hover:bg-neutral-800/90 text-neutral-400 hover:text-white border border-neutral-800/80 hover:border-neutral-700 shadow-md backdrop-blur-md flex items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 group relative"
+            style={(isCurrentlyProjecting || isProjectingNotice) ? { borderColor: `${accent.hex}90`, color: accent.hex, backgroundColor: `${accent.hex}20` } : undefined}
+            title={(isCurrentlyProjecting || isProjectingNotice) ? "Fechar projeção em outra tela" : "Projetar em outra tela"}
+            aria-label={(isCurrentlyProjecting || isProjectingNotice) ? "Fechar projeção em outra tela" : "Projetar em outra tela"}
+          >
+            <Presentation 
+              className="w-4 h-4 transition-transform group-hover:scale-110" 
+              style={{ color: (isCurrentlyProjecting || isProjectingNotice) ? accent.hex : undefined }} 
+            />
+            {(isCurrentlyProjecting || isProjectingNotice) && (
+              <span 
+                className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
+                style={{ backgroundColor: accent.hex }}
+              />
+            )}
+          </button>
         </div>
       </div>
 
@@ -132,20 +226,6 @@ export function HomeHero() {
               <form onSubmit={handleSaveChurchInfo} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
-                    Nome do Distrito ou Região
-                  </label>
-                  <input
-                    type="text"
-                    value={tempDistrict}
-                    onChange={(e) => setTempDistrict(e.target.value)}
-                    placeholder="Ex: Distrito de Cohab"
-                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
-                    style={{ borderColor: `${accent.hex}40` }}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
                     Nome da Igreja Local
                   </label>
                   <input
@@ -153,6 +233,20 @@ export function HomeHero() {
                     value={tempChurch}
                     onChange={(e) => setTempChurch(e.target.value)}
                     placeholder="Ex: Igreja Parque do Sol"
+                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
+                    style={{ borderColor: `${accent.hex}40` }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                    Nome do Distrito ou Região
+                  </label>
+                  <input
+                    type="text"
+                    value={tempDistrict}
+                    onChange={(e) => setTempDistrict(e.target.value)}
+                    placeholder="Ex: Distrito de Cohab"
                     className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
                     style={{ borderColor: `${accent.hex}40` }}
                   />
@@ -170,8 +264,8 @@ export function HomeHero() {
                   <button
                     type="button"
                     onClick={() => {
-                      setTempDistrict('Distrito de Cohab');
                       setTempChurch('Igreja Parque do Sol');
+                      setTempDistrict('Distrito de Cohab');
                     }}
                     className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition-colors cursor-pointer"
                   >

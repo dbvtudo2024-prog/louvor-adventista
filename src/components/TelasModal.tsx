@@ -17,7 +17,7 @@ interface TelasModalProps {
   isOpen: boolean;
   onClose: () => void;
   onStartProjection: () => void;
-  onOpenProjectOnly: (targetScreen?: DetectedScreen) => void;
+  onOpenProjectOnly: (targetScreen?: DetectedScreen, isRetorno?: boolean) => void;
   remoteRoomId: string | null;
   copied: boolean;
   onCopyTvUrl: () => void;
@@ -40,6 +40,15 @@ const DEFAULT_SCREENS: DetectedScreen[] = [
     height: 1080,
     isPrimary: false,
     left: typeof window !== 'undefined' ? window.screen.width || 1920 : 1920,
+    top: 0
+  },
+  {
+    id: 'screen-3',
+    name: 'Tela 3 (Retorno de Palco / Púlpito)',
+    width: 1920,
+    height: 1080,
+    isPrimary: false,
+    left: typeof window !== 'undefined' ? (window.screen.width || 1920) * 2 : 3840,
     top: 0
   }
 ];
@@ -121,9 +130,18 @@ export function TelasModal({
           left: primaryWidth,
           top: 0
         });
+        fallbackList.push({
+          id: 'screen-3',
+          name: 'Tela 3 (Retorno de Palco / Púlpito)',
+          width: 1920,
+          height: 1080,
+          isPrimary: false,
+          left: primaryWidth * 2,
+          top: 0
+        });
         setSelectedScreenId('screen-2');
       } else {
-        // Provide detected primary + option to output to HDMI / projector
+        // Provide detected primary + options for projection and stage monitor
         fallbackList.push({
           id: 'screen-2',
           name: 'Tela 2 (HDMI / Projetor da Igreja)',
@@ -131,6 +149,15 @@ export function TelasModal({
           height: 1080,
           isPrimary: false,
           left: primaryWidth,
+          top: 0
+        });
+        fallbackList.push({
+          id: 'screen-3',
+          name: 'Tela 3 (Retorno de Palco / Púlpito)',
+          width: 1920,
+          height: 1080,
+          isPrimary: false,
+          left: primaryWidth * 2,
           top: 0
         });
       }
@@ -157,7 +184,8 @@ export function TelasModal({
   const targetScreen: DetectedScreen = screens.find(s => s.id === selectedScreenId) || screens[0] || DEFAULT_SCREENS[0];
 
   const handleLaunchToSelectedScreen = () => {
-    onOpenProjectOnly(targetScreen);
+    const isRetorno = targetScreen.id === 'screen-3';
+    onOpenProjectOnly(targetScreen, isRetorno);
     onClose();
   };
 
@@ -314,12 +342,40 @@ export function TelasModal({
                     </span>
                   </div>
                   <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
-                    Exibe a projeção diretamente neste monitor em tela cheia.
+                    Exibe a projeção pública diretamente neste monitor em tela cheia (apenas frase atual).
                   </p>
                 </div>
               </div>
 
-              {/* Option 2: Smart TV / Sala Remota */}
+              {/* Option 2: Tela de Retorno (Palco / Púlpito - 3ª Tela) */}
+              <div 
+                onClick={() => {
+                  onOpenProjectOnly(screens.find(s => s.id === 'screen-3') || targetScreen, true);
+                  onClose();
+                }}
+                className="p-3.5 rounded-2xl bg-neutral-900/90 border border-amber-500/30 transition-all cursor-pointer group flex items-start gap-3.5 hover:bg-neutral-800/80 hover:border-amber-500/60"
+              >
+                <div 
+                  className="p-2.5 rounded-xl bg-amber-500/15 text-amber-400 shrink-0"
+                >
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-amber-400">
+                      Tela de Retorno (3ª Tela - Palco)
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded">
+                      Frase Atual + Próxima
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
+                    Exibe a frase atual destacada e a frase seguinte logo abaixo, ideal para cantores e pregador no palco.
+                  </p>
+                </div>
+              </div>
+
+              {/* Option 3: Smart TV / Sala Remota */}
               <div className="p-3.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 flex flex-col gap-3">
                 <div className="flex items-start gap-3.5">
                   <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 shrink-0">

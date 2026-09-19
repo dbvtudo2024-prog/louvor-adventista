@@ -11,7 +11,7 @@ interface BottomDockProps {
 }
 
 export function BottomDock({ currentTab, onSelectTab }: BottomDockProps) {
-  const { accent, isDarkMode } = useTheme();
+  const { accent, isDarkMode, isMenuInverted } = useTheme();
 
   const tabs = [
     { id: 'inicio' as TabType, label: 'Início', icon: Home },
@@ -25,8 +25,9 @@ export function BottomDock({ currentTab, onSelectTab }: BottomDockProps) {
   return (
     <nav 
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-40 backdrop-blur-md border-t shadow-2xl select-none transition-colors duration-500",
-        isDarkMode ? "bg-[#101216]/90 border-neutral-800/90 text-white" : "bg-white/90 border-neutral-200 text-neutral-900"
+        "left-0 right-0 z-40 backdrop-blur-md select-none transition-colors duration-500",
+        isMenuInverted ? "fixed top-0 border-b shadow-md" : "fixed bottom-0 border-t shadow-2xl",
+        isDarkMode ? "bg-[#101216]/95 border-neutral-800/90 text-white" : "bg-white/95 border-neutral-200 text-neutral-900"
       )}
     >
       <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-around sm:justify-center sm:gap-10">

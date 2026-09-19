@@ -1,12 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   BookOpen, Search, Monitor, Copy, Check, ChevronLeft, ChevronRight, 
-  SlidersHorizontal, Play, Bookmark, Maximize2
+  SlidersHorizontal, Play, Bookmark, Maximize2, X, Square, Upload, Database, RotateCcw
 } from 'lucide-react';
 import { Song } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { 
+  isProjectionWindowOpen, 
+  closeProjectionWindow, 
+  subscribeToProjection, 
+  broadcastToProjection 
+} from '../utils/projectionSync';
+import { saveBibleToDB, loadBibleFromDB } from '../utils/bibleStorage';
+import { parseBibleCSV } from '../utils/bibleCsvParser';
 
-interface BookInfo {
+export interface BookInfo {
   abbr: string;
   name: string;
   testament: 'AT' | 'NT';
@@ -14,7 +22,7 @@ interface BookInfo {
   chapters: number;
 }
 
-const BIBLE_BOOKS: BookInfo[] = [
+export const BIBLE_BOOKS: BookInfo[] = [
   // Antigo Testamento - Pentateuco / Lei
   { abbr: 'Gn', name: 'Gênesis', testament: 'AT', category: 'lei', chapters: 50 },
   { abbr: 'Ex', name: 'Êxodo', testament: 'AT', category: 'lei', chapters: 40 },
@@ -161,9 +169,11 @@ const POPULAR_VERSES: Record<string, string[]> = {
 interface BibliaViewProps {
   onProjectVerse: (verseSong: Song) => void;
   onBackToHome?: () => void;
+  isProjecting?: boolean;
+  onCloseProjection?: () => void;
 }
 
-export function BibliaView({ onProjectVerse }: BibliaViewProps) {
+export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onCloseProjection }: BibliaViewProps) {
   const { accent, isDarkMode } = useTheme();
   const [version, setVersion] = useState('Almeida Revista e Atualizada (ARA)');
   const [testamentFilter, setTestamentFilter] = useState<'AT' | 'NT'>('AT');
@@ -175,6 +185,185 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
   const [searchGlobalQuery, setSearchGlobalQuery] = useState('');
   const [verseSearchQuery, setVerseSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Estados da Bíblia Completa nativa (ARA/NVI) e importada pelo usuário
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const versesContainerRef = useRef<HTMLDivElement>(null);
+  const [bibleData, setBibleData] = useState<any[] | null>(null);
+  const [customBibleData, setCustomBibleData] = useState<any[] | null>(null);
+  const [isLoadingBible, setIsLoadingBible] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+
+  // Ao mudar de livro ou capítulo, reseta a lista dos versículos para iniciar do primeiro
+  useEffect(() => {
+    if (versesContainerRef.current) {
+      versesContainerRef.current.scrollTop = 0;
+    }
+    setSelectedVerseIndex(null);
+    setVerseSearchQuery('');
+  }, [selectedBook.abbr, selectedChapter]);
+
+  // Carrega bíblia customizada salva no IndexedDB
+  useEffect(() => {
+    loadBibleFromDB().then((saved) => {
+      if (saved && Array.isArray(saved) && saved.length > 0) {
+        setCustomBibleData(saved);
+      }
+    });
+  }, []);
+
+  // Carrega a Bíblia Completa oficial (ARA / NVI com todos os 66 livros e 1.189 capítulos)
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingBible(true);
+    const fileName = version.includes('NVI') ? 'pt_nvi.json' : 'pt_ara.json';
+    fetch(`/biblia/${fileName}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Falha ao carregar bíblia local');
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted && Array.isArray(data)) {
+          setBibleData(data);
+          setIsLoadingBible(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('Carregamento local da Bíblia:', err);
+        if (isMounted) setIsLoadingBible(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [version]);
+
+  // Manipulador de Importação de Arquivo da Bíblia (.csv, .json, etc.)
+  const handleImportBibleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const isCSV = fileName.endsWith('.csv') || fileName.endsWith('.tsv') || file.type.includes('csv');
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const textContent = event.target?.result as string;
+        let parsed: any = null;
+
+        if (isCSV) {
+          parsed = parseBibleCSV(textContent);
+        } else {
+          try {
+            parsed = JSON.parse(textContent);
+          } catch (jsonErr) {
+            // Se falhar como JSON, tenta como CSV automaticamente
+            try {
+              parsed = parseBibleCSV(textContent);
+            } catch (csvErr: any) {
+              throw new Error('Não foi possível ler o arquivo. Certifique-se de que é um CSV ou JSON válido da Bíblia.');
+            }
+          }
+        }
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCustomBibleData(parsed);
+          await saveBibleToDB(parsed);
+          const totalVerses = parsed.reduce((tot: number, b: any) => {
+            if (!b || !Array.isArray(b.chapters)) return tot;
+            return tot + b.chapters.reduce((sum: number, ch: any) => sum + (Array.isArray(ch) ? ch.length : 0), 0);
+          }, 0);
+          setImportNotice(`Bíblia importada com sucesso! (${parsed.length} livros, ${totalVerses} versículos carregados de ${file.name})`);
+        } else if (parsed && typeof parsed === 'object') {
+          const booksArray = parsed.books || parsed.livros || Object.keys(parsed).map(key => ({
+            name: key,
+            abbrev: key.substring(0, 3).toLowerCase(),
+            chapters: Object.values(parsed[key])
+          }));
+          if (Array.isArray(booksArray) && booksArray.length > 0) {
+            setCustomBibleData(booksArray);
+            await saveBibleToDB(booksArray);
+            setImportNotice(`Bíblia importada com sucesso! (${booksArray.length} livros carregados)`);
+          } else {
+            throw new Error('Formato da Bíblia não reconhecido.');
+          }
+        } else {
+          throw new Error('Formato de arquivo inválido.');
+        }
+      } catch (err: any) {
+        setImportNotice(`Erro ao importar: ${err.message}`);
+      }
+      setTimeout(() => setImportNotice(null), 5500);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Monitora se a Bíblia está sendo projetada na segunda tela
+  const [isInternalBibleProjecting, setIsInternalBibleProjecting] = useState<boolean>(() => {
+    try {
+      const open = isProjectionWindowOpen();
+      const status = localStorage.getItem('projection_active_status');
+      const activeType = localStorage.getItem('projection_active_type');
+      const activeSongId = localStorage.getItem('projection_active_song_id');
+      const isBible = activeType === 'bible' || activeSongId?.startsWith('bible-') || false;
+      return open && status === 'open' && isBible;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const isBibleProjecting = Boolean(isProjecting && isInternalBibleProjecting) || isInternalBibleProjecting;
+
+  useEffect(() => {
+    const checkStatus = () => {
+      try {
+        const open = isProjectionWindowOpen();
+        const status = localStorage.getItem('projection_active_status');
+        const activeType = localStorage.getItem('projection_active_type');
+        const activeSongId = localStorage.getItem('projection_active_song_id');
+        const isBible = activeType === 'bible' || activeSongId?.startsWith('bible-') || false;
+        setIsInternalBibleProjecting(open && status === 'open' && isBible);
+      } catch (e) {}
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 350);
+
+    const unsubscribe = subscribeToProjection((msg) => {
+      if (msg.type === 'CLOSE_PROJECTION') {
+        setIsInternalBibleProjecting(false);
+      } else if (msg.type === 'PROJECT_SONG') {
+        if (msg.song?.category === 'Bíblia' || msg.song?.id?.startsWith('bible-')) {
+          setIsInternalBibleProjecting(true);
+        } else if (msg.song && !msg.song.id?.startsWith('bible-') && msg.song.category !== 'Bíblia') {
+          setIsInternalBibleProjecting(false);
+        }
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
+  }, []);
+
+  const handleStopProjection = useCallback(() => {
+    closeProjectionWindow();
+    setIsInternalBibleProjecting(false);
+    try {
+      localStorage.setItem('projection_active_status', 'closed');
+      localStorage.removeItem('projection_active_song_id');
+      localStorage.removeItem('projection_active_type');
+      localStorage.removeItem('projection_bible_verse');
+    } catch (e) {}
+    broadcastToProjection({
+      type: 'CLOSE_PROJECTION'
+    });
+    if (onCloseProjection) {
+      onCloseProjection();
+    }
+  }, [onCloseProjection]);
 
   // Filter books by search & testament
   const filteredBooks = useMemo(() => {
@@ -188,20 +377,41 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
 
   // Verses generator / lookup
   const rawVerses = useMemo(() => {
+    // 1. Dados customizados importados pelo usuário
+    if (customBibleData && Array.isArray(customBibleData)) {
+      const bookIdx = BIBLE_BOOKS.findIndex(b => b.abbr.toLowerCase() === selectedBook.abbr.toLowerCase());
+      if (bookIdx !== -1 && customBibleData[bookIdx]?.chapters?.[selectedChapter - 1]) {
+        const ch = customBibleData[bookIdx].chapters[selectedChapter - 1];
+        if (Array.isArray(ch) && ch.length > 0) {
+          const valid = ch.map(v => typeof v === 'string' ? v : (v?.text || v?.verse || String(v))).filter(v => Boolean(v && v.trim().length > 0));
+          if (valid.length > 0) return valid;
+        }
+      }
+    }
+
+    // 2. Bíblia Completa nativa (ARA / NVI com todos os 66 livros e 1.189 capítulos)
+    if (bibleData && Array.isArray(bibleData)) {
+      const bookIdx = BIBLE_BOOKS.findIndex(b => b.abbr.toLowerCase() === selectedBook.abbr.toLowerCase());
+      if (bookIdx !== -1 && bibleData[bookIdx]?.chapters?.[selectedChapter - 1]) {
+        const ch = bibleData[bookIdx].chapters[selectedChapter - 1];
+        if (Array.isArray(ch) && ch.length > 0) return ch;
+      }
+    }
+
+    // 3. Versículos de cache rápido populares
     const key = `${selectedBook.abbr}-${selectedChapter}`;
     if (POPULAR_VERSES[key]) {
       return POPULAR_VERSES[key];
     }
-    // Generate theological verses if not hardcoded
-    const count = 28;
-    const generated: string[] = [];
-    for (let i = 1; i <= count; i++) {
-      generated.push(
-        `E naquele tempo, o Senhor falou ao seu povo, dizendo: Guardai os meus estatutos e vivei pela fé em toda a justiça divina, para que prospereis em todos os vossos caminhos perante o Todo-Poderoso (Versículo ${i}).`
-      );
+
+    if (isLoadingBible) {
+      return ['Carregando texto da Bíblia Sagrada...'];
     }
-    return generated;
-  }, [selectedBook, selectedChapter]);
+
+    return [
+      `Carregando versículos de ${selectedBook.name} ${selectedChapter}...`
+    ];
+  }, [selectedBook, selectedChapter, customBibleData, bibleData, isLoadingBible]);
 
   // Filter verses
   const displayedVerses = useMemo(() => {
@@ -250,9 +460,18 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
       author: ref
     };
     try {
+      localStorage.setItem('projection_active_status', 'open');
+      localStorage.setItem('projection_active_type', 'bible');
+      localStorage.setItem('projection_active_song_id', verseSong.id);
       localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
       localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
     } catch (e) {}
+    setIsInternalBibleProjecting(true);
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: verseSong,
+      index: 0
+    });
     onProjectVerse(verseSong);
   };
 
@@ -387,7 +606,50 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
             <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: accent.hex }} />
             <span className="hidden sm:inline">Navegar em versículos</span>
           </button>
+
+          {/* Input oculto para importação de arquivo da Bíblia (CSV ou JSON) */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.tsv,.json,.txt"
+            onChange={handleImportBibleFile}
+            className="hidden"
+          />
+
+          {/* Botão Importar Arquivo da Bíblia */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3.5 py-1.5 bg-[#1b1c20] hover:bg-neutral-800 border border-neutral-700/80 rounded-full text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer"
+            title="Importar Bíblia Completa do seu computador (.csv ou .json)"
+          >
+            <Upload className="w-3.5 h-3.5 text-neutral-300" />
+            <span className="hidden md:inline">Importar Bíblia (.csv / .json)</span>
+          </button>
+
+          {/* Opção de restaurar caso tenha Bíblia customizada carregada */}
+          {customBibleData && (
+            <button
+              onClick={async () => {
+                setCustomBibleData(null);
+                await saveBibleToDB(null);
+                setImportNotice('Restaurado para as versões padrão (ARA / NVI).');
+                setTimeout(() => setImportNotice(null), 3500);
+              }}
+              className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 rounded-full text-xs font-medium text-neutral-300 flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
+              title="Restaurar Bíblia padrão (ARA / NVI)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+              <span className="hidden lg:inline">Restaurar Padrão</span>
+            </button>
+          )}
         </div>
+
+        {/* Notificação flutuante de importação */}
+        {importNotice && (
+          <div className="absolute top-16 right-6 z-50 px-4 py-2.5 bg-neutral-900/95 border border-emerald-500/60 text-emerald-300 rounded-xl text-xs font-bold shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
+            {importNotice}
+          </div>
+        )}
       </div>
 
       {/* ============================================================ */}
@@ -594,7 +856,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
           </div>
 
           {/* Verses List matching image.png & image 4 (Scrolls internally without outer scrollbar) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pt-2 space-y-2 pb-44">
+          <div ref={versesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-2 pt-2 space-y-2 pb-44">
             {displayedVerses.map((verseText, idx) => {
               const verseNum = idx + 1;
               const isSelected = selectedVerseIndex === idx;
@@ -602,7 +864,15 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
               return (
                 <div
                   key={verseNum}
-                  onClick={() => setSelectedVerseIndex(isSelected ? null : idx)}
+                  onClick={() => {
+                    if (isBibleProjecting) {
+                      // Estando projetado, ao selecionar outro verso, substitui imediatamente na tela de projeção
+                      setSelectedVerseIndex(idx);
+                      handleProjectSelected(idx);
+                    } else {
+                      setSelectedVerseIndex(isSelected ? null : idx);
+                    }
+                  }}
                   onDoubleClick={() => handleProjectSelected(idx)}
                   className={`flex items-start gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all border-l-4 ${
                     isSelected
@@ -632,10 +902,24 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
           </div>
 
           {/* ============================================================ */}
-          {/* FLOATING PROJECTION CARD & CIRCLE PLAY BUTTON               */}
-          {/* Only rendered when a verse is selected (Image 4 requirement) */}
+          {/* FLOATING PROJECTION CONTROLS AT BOTTOM RIGHT                */}
+          {/* - Se projetando: miniatura NÃO aparece, apenas botão fechar */}
+          {/* - Se não projetando: exibe miniatura + botão de projetar   */}
           {/* ============================================================ */}
-          {selectedVerseIndex !== null && (
+          {isBibleProjecting ? (
+            <div className="absolute bottom-3 right-3 z-30 flex items-center select-none animate-in fade-in zoom-in-95 duration-200">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStopProjection();
+                }}
+                className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-rose-600 hover:bg-rose-500 active:scale-95 shadow-[0_8px_25px_rgba(225,29,72,0.55)] flex items-center justify-center transition-all cursor-pointer border-2 border-[#16171a] z-40 hover:scale-105 text-white"
+                title="Encerrar projeção do versículo"
+              >
+                <X className="w-6 h-6 stroke-[2.5]" />
+              </button>
+            </div>
+          ) : selectedVerseIndex !== null ? (
             <div className="absolute bottom-3 right-3 z-30 flex items-end select-none animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Dark Navy Projection Preview Card */}
               <div 
@@ -667,7 +951,7 @@ export function BibliaView({ onProjectVerse }: BibliaViewProps) {
                 <Play className="w-5 h-5 text-neutral-950 fill-none stroke-[2.6] ml-0.5" />
               </button>
             </div>
-          )}
+          ) : null}
 
         </div>
 

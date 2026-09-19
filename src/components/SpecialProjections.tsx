@@ -1,7 +1,87 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+
+export interface RandomInnerParticlesProps {
+  count?: number;
+  accentColor: string;
+}
+
+/**
+ * Renders loose, randomly drifting luminous particles strictly inside the circular boundary.
+ */
+export function RandomInnerParticles({ count = 24, accentColor }: RandomInnerParticlesProps) {
+  const particles = useMemo(() => {
+    return Array.from({ length: count }, (_, i) => {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.sqrt(Math.random()) * 38;
+      const startX = 50 + radius * Math.cos(angle);
+      const startY = 50 + radius * Math.sin(angle);
+
+      const dx1 = (Math.random() - 0.5) * 22;
+      const dy1 = (Math.random() - 0.5) * 22;
+      const dx2 = (Math.random() - 0.5) * 30;
+      const dy2 = (Math.random() - 0.5) * 30;
+
+      const size = Math.random() < 0.2 ? 3.5 : Math.random() < 0.6 ? 2.5 : 1.5;
+      const isAccent = i % 2 === 0;
+      const color = isAccent ? accentColor : '#38bdf8';
+      const duration = 4.5 + Math.random() * 4.5;
+      const delay = Math.random() * 2.5;
+      const minOpacity = 0.2 + Math.random() * 0.2;
+      const maxOpacity = 0.65 + Math.random() * 0.35;
+
+      return {
+        id: i,
+        startX,
+        startY,
+        dx1,
+        dy1,
+        dx2,
+        dy2,
+        size,
+        color,
+        duration,
+        delay,
+        minOpacity,
+        maxOpacity
+      };
+    });
+  }, [count, accentColor]);
+
+  return (
+    <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none z-0">
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full"
+          style={{
+            left: `${p.startX}%`,
+            top: `${p.startY}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            backgroundColor: p.color,
+            boxShadow: `0 0 ${p.size * 2.5}px ${p.color}`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          animate={{
+            x: [0, p.dx1, p.dx2, 0],
+            y: [0, p.dy1, p.dy2, 0],
+            opacity: [p.minOpacity, p.maxOpacity, p.minOpacity * 0.8, p.minOpacity],
+            scale: [1, 1.25, 0.9, 1]
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface BibleProjectionProps {
   verseText: string;
@@ -24,9 +104,10 @@ export function BibleProjectionScreen({ verseText, reference }: BibleProjectionP
 
       {/* Centered Verse Text (Image 1 replica) */}
       <motion.div
+        key={`verse-${reference}-${verseText}`}
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
         className="flex-1 flex items-center justify-center text-center px-4 z-10"
       >
         <p 
@@ -39,9 +120,10 @@ export function BibleProjectionScreen({ verseText, reference }: BibleProjectionP
 
       {/* Bottom Right Reference in Dynamic Theme Accent (Image 1 replica) */}
       <motion.div 
+        key={`ref-${reference}`}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.1 }}
+        transition={{ duration: 0.28, delay: 0.05 }}
         className="w-full flex justify-end items-center z-10 pt-4"
       >
         <span 
@@ -63,22 +145,53 @@ interface SorteioProjectionProps {
 export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjectionProps) {
   const { accent } = useTheme();
 
-  const displayList = useMemo(() => {
-    if (winnersList && winnersList.length > 0) return winnersList;
-    return [{ id: '1', order: 1, value: winner }];
-  }, [winnersList, winner]);
+  const validList = useMemo(() => {
+    if (winnersList && winnersList.length > 0) {
+      const filtered = winnersList.filter(
+        item => item && item.value !== undefined && item.value !== null && String(item.value) !== '?' && String(item.value) !== ''
+      );
+      // Ordena cronologicamente por ordem de sorteio (1º, 2º, 3º...)
+      return [...filtered].sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) {
+          return a.order - b.order;
+        }
+        return 0;
+      });
+    }
+    return [];
+  }, [winnersList]);
+
+  const isBlankState = !winner || winner === '?' || winner === '—';
 
   return (
     <div className="w-full h-full bg-black flex flex-col justify-between items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none">
       {/* Top spacing */}
       <div className="h-4 sm:h-8" />
 
-      {/* Center: Glowing Sphere & Orbit Ring (Image 3 replica) */}
+      {/* Center: Glowing Sphere & Spinning Orbit Rings with Discrete Particles */}
       <div className="flex-1 flex items-center justify-center relative w-full my-auto">
-        {/* Themed Dashed Orbit Ring */}
-        <div 
-          className="w-72 h-72 sm:w-[380px] sm:h-[380px] md:w-[450px] md:h-[450px] rounded-full border-2 border-dashed flex items-center justify-center pointer-events-none"
-          style={{ borderColor: `${accent.hex}40` }}
+        {/* Outer Continuous Rotating Dashed Orbit Ring */}
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 35, ease: "linear" }}
+          className="w-80 h-80 sm:w-[410px] sm:h-[410px] md:w-[480px] md:h-[480px] rounded-full border-2 border-dashed flex items-center justify-center pointer-events-none absolute"
+          style={{ borderColor: `${accent.hex}35` }}
+        />
+
+        {/* Counter-rotating segmented dotted ring */}
+        <motion.div 
+          animate={{ rotate: -360 }}
+          transition={{ repeat: Infinity, duration: 24, ease: "linear" }}
+          className="w-72 h-72 sm:w-[360px] sm:h-[360px] md:w-[430px] md:h-[430px] rounded-full border border-dotted flex items-center justify-center pointer-events-none absolute"
+          style={{ borderColor: `${accent.hex}50` }}
+        />
+
+        {/* Inner rotating accent arc ring */}
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
+          className="w-68 h-68 sm:w-[340px] sm:h-[340px] md:w-[405px] md:h-[405px] rounded-full border border-t-2 border-r-transparent border-b-transparent border-l-transparent pointer-events-none absolute"
+          style={{ borderTopColor: accent.hex }}
         />
 
         {/* Translucent Glowing Dark Sphere */}
@@ -86,7 +199,7 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
           initial={{ scale: 0.85, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 20 }}
-          className="absolute w-64 h-64 sm:w-[320px] sm:h-[320px] md:w-[380px] md:h-[380px] rounded-full bg-gradient-to-b from-[#1c1c20] via-[#141416] to-[#0c0c0e] border flex flex-col items-center justify-center p-6 backdrop-blur-md overflow-hidden"
+          className="absolute w-64 h-64 sm:w-[320px] sm:h-[320px] md:w-[380px] md:h-[380px] rounded-full bg-gradient-to-b from-[#1c1c20] via-[#141416] to-[#0c0c0e] border flex flex-col items-center justify-center p-6 backdrop-blur-md overflow-hidden relative"
           style={{ 
             borderColor: `${accent.hex}60`, 
             boxShadow: `0 0 100px ${accent.hex}35` 
@@ -97,35 +210,41 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
             className="absolute inset-0 pointer-events-none"
             style={{ background: `radial-gradient(circle at 50% 35%, ${accent.hex}25, transparent 70%)` }}
           />
-          <div className="absolute top-8 right-12 opacity-50">
+
+          {/* Loose random drifting particles inside circle */}
+          <RandomInnerParticles count={28} accentColor={accent.hex} />
+
+          <div className="absolute top-8 right-12 opacity-50 z-10">
             <Sparkles className="w-4 h-4 animate-pulse" style={{ color: accent.hex }} />
           </div>
-          <div className="absolute bottom-12 left-10 opacity-40">
+          <div className="absolute bottom-12 left-10 opacity-40 z-10">
             <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ color: accent.hex }} />
           </div>
 
-          {/* VENCEDOR! Label */}
-          <span 
-            className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mb-2 sm:mb-4"
-            style={{ color: accent.hex }}
-          >
-            VENCEDOR!
-          </span>
+          {/* Apenas a palavra VENCEDOR e o número sorteado (Sem redundância) */}
+          <div className="flex flex-col items-center justify-center relative z-10 text-center">
+            <span 
+              className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mb-2"
+              style={{ color: isBlankState ? accent.hex : '#f59e0b' }}
+            >
+              {isBlankState ? 'SORTEIO' : 'VENCEDOR'}
+            </span>
 
-          {/* Winner Number in Neon Electric Cyan/Blue with Glow */}
-          <motion.span 
-            key={String(winner)}
-            initial={{ scale: 0.7, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 260, damping: 18 }}
-            className="text-[#0ea5e9] text-7xl sm:text-8xl md:text-9xl font-black tracking-tight leading-none drop-shadow-[0_0_40px_rgba(14,165,233,0.9)]"
-          >
-            {winner}
-          </motion.span>
+            {/* Winner Number in Neon Electric Cyan/Blue with Glow */}
+            <motion.span 
+              key={String(winner)}
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 260, damping: 18 }}
+              className="text-[#0ea5e9] text-7xl sm:text-8xl md:text-9xl font-black tracking-tight leading-none drop-shadow-[0_0_40px_rgba(14,165,233,0.9)]"
+            >
+              {winner !== undefined && winner !== null && winner !== '' ? winner : '?'}
+            </motion.span>
+          </div>
         </motion.div>
       </div>
 
-      {/* Bottom Bar: Sorteados List (Image 3 replica) */}
+      {/* Bottom Bar: Apenas os números já sorteados */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -137,35 +256,151 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
             SORTEADOS
           </span>
           <div className="flex items-center gap-2">
-            {displayList.map((item, index) => {
-              const isActive = String(item.value) === String(winner);
-              return (
-                <div
-                  key={item.id || index}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 shrink-0 ${
-                    isActive
-                      ? 'border shadow-md'
-                      : 'bg-neutral-900 border border-neutral-800 text-neutral-400'
-                  }`}
-                  style={isActive ? {
-                    borderColor: `${accent.hex}90`,
-                    backgroundColor: `${accent.hex}20`,
-                    color: accent.hex,
-                    boxShadow: `0 0 12px ${accent.hex}40`
-                  } : undefined}
-                >
-                  <span className="text-[10px] text-neutral-500">{index + 1}</span>
-                  <span>{item.value}</span>
-                </div>
-              );
-            })}
+            {validList.length === 0 ? (
+              <span className="text-xs text-neutral-500 italic pl-1">Aguardando sorteio...</span>
+            ) : (
+              validList.map((item, index) => {
+                const isActive = String(item.value) === String(winner);
+                return (
+                  <div
+                    key={item.id || index}
+                    className={`min-w-10 h-10 px-3.5 rounded-xl font-mono text-sm sm:text-base font-bold transition-all flex items-center justify-center shrink-0 ${
+                      isActive
+                        ? 'border-2 shadow-lg ring-1 ring-amber-400/30 font-black'
+                        : 'bg-neutral-900 border border-neutral-800 text-neutral-200'
+                    }`}
+                    style={isActive ? {
+                      borderColor: '#f59e0b',
+                      backgroundColor: 'rgba(245, 158, 11, 0.22)',
+                      color: '#fbbf24',
+                      boxShadow: '0 0 16px rgba(245, 158, 11, 0.45)'
+                    } : undefined}
+                  >
+                    {item.value}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
-        <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-300 text-xs flex items-center justify-center font-bold shrink-0 ml-3">
-          {displayList.length}
-        </div>
+        {validList.length > 0 && (
+          <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-300 text-xs flex items-center justify-center font-bold shrink-0 ml-3">
+            {validList.length}
+          </div>
+        )}
       </motion.div>
+    </div>
+  );
+}
+
+interface ChurchClockProjectionProps {
+  churchName?: string;
+  districtName?: string;
+}
+
+export function ChurchClockProjectionScreen({ churchName: initialChurch, districtName: initialDistrict }: ChurchClockProjectionProps) {
+  const { accent } = useTheme();
+  const [timeString, setTimeString] = useState('');
+  const [churchName, setChurchName] = useState(() => {
+    return initialChurch || localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+  });
+  const [districtName, setDistrictName] = useState(() => {
+    return initialDistrict || localStorage.getItem('church_district') || 'Distrito de Cohab';
+  });
+
+  // Keep live time updated
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      setTimeString(`${hours}:${minutes}:${seconds}`);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Listen to storage or projection broadcast changes
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'church_name' && e.newValue) setChurchName(e.newValue);
+      if (e.key === 'church_district' && e.newValue) setDistrictName(e.newValue);
+      if (e.key === 'projection_church_data' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.churchName) setChurchName(parsed.churchName);
+          if (parsed.districtName) setDistrictName(parsed.districtName);
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  return (
+    <div className="w-full h-full bg-[#0a0a0c] flex flex-col justify-center items-center p-8 sm:p-14 md:p-20 overflow-hidden relative select-none">
+      {/* Background Radial Glow */}
+      <div 
+        className="absolute inset-0 pointer-events-none transition-all duration-700 ease-out"
+        style={{
+          background: `radial-gradient(circle at 50% 50%, ${accent.hex}22 0%, rgba(10,10,12,0.6) 55%, #0a0a0c 100%)`
+        }}
+      />
+
+      {/* Atmospheric Concentric Rings matching user screenshot */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div 
+          className="w-[500px] h-[500px] sm:w-[700px] sm:h-[700px] md:w-[900px] md:h-[900px] rounded-full border border-neutral-800/40 opacity-40"
+        />
+        <div 
+          className="w-[350px] h-[350px] sm:w-[500px] sm:h-[500px] md:w-[650px] md:h-[650px] rounded-full border border-neutral-700/30 opacity-30 absolute"
+        />
+        <div 
+          className="w-[200px] h-[200px] sm:w-[300px] sm:h-[300px] md:w-[420px] md:h-[420px] rounded-full border border-neutral-700/20 opacity-20 absolute"
+        />
+      </div>
+
+      {/* Main Central Stage Display */}
+      <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-5xl z-10 space-y-4 sm:space-y-6">
+        {/* Church & District Headers (Inverted: Church First & Larger, District Second & Smaller) */}
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="space-y-1 sm:space-y-2"
+        >
+          {/* Igreja: Primeiro e Maior */}
+          <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]">
+            {churchName}
+          </h1>
+
+          {/* Distrito: Menor */}
+          <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-neutral-300 font-medium tracking-wide drop-shadow-md">
+            {districtName}
+          </p>
+        </motion.div>
+
+        {/* Live Digital Clock (Abaixo) */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.1, ease: "easeOut" }}
+          className="pt-4 sm:pt-8"
+        >
+          <span 
+            className="font-mono text-6xl sm:text-8xl md:text-9xl lg:text-[11rem] xl:text-[13rem] font-bold tracking-widest transition-colors duration-500 select-none block leading-none"
+            style={{
+              color: accent.hex,
+              filter: `drop-shadow(0 0 45px ${accent.hex}80) drop-shadow(0 0 90px ${accent.hex}40)`
+            }}
+          >
+            {timeString || '12:00:00'}
+          </span>
+        </motion.div>
+      </div>
     </div>
   );
 }

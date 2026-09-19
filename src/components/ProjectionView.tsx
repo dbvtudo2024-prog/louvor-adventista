@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -18,17 +19,20 @@ import {
   Sliders,
   PanelRight,
   PanelRightClose,
-  Pencil
+  Pencil,
+  ShieldAlert,
+  Square
 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 import { BibleProjectionScreen, SorteioProjectionScreen } from './SpecialProjections';
-import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection } from '../utils/projectionSync';
+import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection, isProjectionWindowOpen, closeProjectionWindow, isMultiScreenDetected } from '../utils/projectionSync';
 
 interface ProjectionViewProps {
   song: Song;
   onClose: () => void;
+  onMinimize?: () => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
   onUpdateSong?: (updatedSong: Partial<Song>) => Promise<void>;
@@ -41,6 +45,7 @@ interface ProjectionViewProps {
 export function ProjectionView({ 
   song, 
   onClose, 
+  onMinimize,
   isPlaying, 
   onTogglePlay, 
   onOpenSlideEditor,
@@ -49,7 +54,16 @@ export function ProjectionView({
   fontFamily: initialFontFamily = 'opensans'
 }: ProjectionViewProps) {
   const { accent, isDarkMode } = useTheme();
-  const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
+  const [currentPhraseIndex, setCurrentPhraseIndex] = useState(() => {
+    try {
+      const raw = localStorage.getItem('projection_current_index');
+      if (raw !== null) {
+        const parsed = Number(raw);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch (e) {}
+    return 0;
+  });
   const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>(initialFontFamily);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideListOpen, setIsSlideListOpen] = useState(true);
@@ -59,6 +73,7 @@ export function ProjectionView({
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [isExternalWindowOpen, setIsExternalWindowOpen] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const wakeLockRef = useRef<any>(null);
   const externalWindowRef = useRef<Window | null>(null);
@@ -84,6 +99,12 @@ export function ProjectionView({
         }
       }
     }
+    // Direct postMessage to external window if open
+    if (externalWindowRef.current && !externalWindowRef.current.closed) {
+      try {
+        externalWindowRef.current.postMessage(enrichedMessage, '*');
+      } catch (e) {}
+    }
     // Universal broadcast to external projection window and localStorage
     broadcastToProjection(enrichedMessage);
   }, [song]);
@@ -94,7 +115,7 @@ export function ProjectionView({
       try {
         localStorage.setItem('projection_current_song', JSON.stringify(song));
       } catch (e) {}
-      broadcastToProjection({ type: 'PROJECT_SONG', song, index: currentPhraseIndex || 0 });
+      broadcastToProjection({ type: 'PROJECT_SONG', song, index: currentIndexRef.current || 0 });
 
       const win = await openSecondaryProjectionWindow(song);
       if (win) {
@@ -106,10 +127,22 @@ export function ProjectionView({
       console.warn('Screen details check:', err);
     }
     return null;
-  }, [song, currentPhraseIndex]);
+  }, [song]);
 
-  // Open external window manually (on click of 2nd screen button)
+  // Open external window manually (on click of 2nd screen button) - toggles if already open
   const handleOpenExternal = async () => {
+    if (isExternalWindowOpen || isProjectionWindowOpen()) {
+      closeProjectionWindow();
+      if (externalWindowRef.current && !externalWindowRef.current.closed) {
+        try {
+          externalWindowRef.current.close();
+        } catch (e) {}
+      }
+      externalWindowRef.current = null;
+      setIsExternalWindowOpen(false);
+      return;
+    }
+
     try {
       localStorage.setItem('projection_current_song', JSON.stringify(song));
     } catch (e) {}
@@ -127,12 +160,14 @@ export function ProjectionView({
     }
   };
 
-  // Attempt automatic second screen opening when mounted
+  // Attempt automatic second screen opening only once when mounted
   useEffect(() => {
-    openLyricsOnSecondScreen().catch(err => {
-      console.warn('Auto screen projection check skipped:', err);
-    });
-  }, [openLyricsOnSecondScreen]);
+    if (isMultiScreenDetected()) {
+      openLyricsOnSecondScreen().catch(err => {
+        console.warn('Auto screen projection check skipped:', err);
+      });
+    }
+  }, []);
 
   // Wake Lock for screen staying awake
   useEffect(() => {
@@ -274,11 +309,9 @@ export function ProjectionView({
         e.preventDefault();
         prevPhrase();
       } else if (e.key === 'Escape') {
-        if (document.fullscreenElement) {
-          document.exitFullscreen().catch(() => {});
-        } else {
-          onClose();
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        setShowExitConfirm(prev => !prev);
       } else if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         setIsSlideListOpen(prev => !prev);
@@ -356,13 +389,13 @@ export function ProjectionView({
   const isSorteio = song?.id === 'sorteio-projection' || song?.category === 'sorteio' || song?.collection_id === 'utilitarios';
 
   const sorteioData = useMemo(() => {
-    if (!isSorteio || !song) return { winner: '1', winners: [] as any[] };
-    let winner = song.lyrics || '1';
+    if (!isSorteio || !song) return { winner: '?', winners: [] as any[] };
+    let winner = song.lyrics || '?';
     let winners: any[] = [];
     try {
       if (song.author && song.author.startsWith('{')) {
         const parsed = JSON.parse(song.author);
-        if (parsed.winner !== undefined) winner = String(parsed.winner);
+        if (parsed.winner !== undefined && parsed.winner !== null) winner = String(parsed.winner);
         if (Array.isArray(parsed.winners)) winners = parsed.winners;
       }
     } catch (e) {}
@@ -373,7 +406,7 @@ export function ProjectionView({
   return (
     <div 
       className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden select-none font-sans"
-      onClick={onClose}
+      onClick={() => setShowExitConfirm(true)}
     >
       <div 
         className="w-full max-w-7xl h-[92vh] max-h-[920px] bg-[#070a14] border border-neutral-800/90 rounded-3xl shadow-2xl flex flex-row overflow-hidden relative"
@@ -395,24 +428,18 @@ export function ProjectionView({
           <div className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full px-3.5 py-1.5 flex items-center gap-3 backdrop-blur-md shadow-lg">
             <button
               type="button"
-              onClick={onClose}
+              onClick={onMinimize}
               className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
-              title="Minimizar (ESC)"
+              title="Minimizar Projeção (Miniatura acima do menu inferior)"
             >
               <Minus className="w-4 h-4" />
             </button>
             <div className="w-[1px] h-3.5 bg-neutral-700/60" />
             <button
               type="button"
-              onClick={() => {
-                if (audioElement) {
-                  audioElement.pause();
-                  audioElement.currentTime = 0;
-                }
-                onClose();
-              }}
+              onClick={() => setShowExitConfirm(true)}
               className="text-neutral-400 hover:text-red-400 transition-colors cursor-pointer"
-              title="Encerrar Projeção"
+              title="Encerrar Projeção (Trava de Segurança)"
             >
               <X className="w-4 h-4" />
             </button>
@@ -421,9 +448,9 @@ export function ProjectionView({
           {/* Top Right Status & Tool Pill (Image 3) */}
           <div className="flex items-center gap-2">
             <div className="bg-[#14161f]/90 border border-neutral-700/60 rounded-full px-4 py-1.5 flex items-center gap-2.5 backdrop-blur-md shadow-lg text-[11px] text-neutral-400 font-medium">
-              <span>ESC encerra a projeção</span>
+              <span>ESC: Trava de segurança</span>
               <span className="opacity-40">•</span>
-              <span>Ctrl+Alt+P alterna com a tela do operador</span>
+              <span>Ctrl+Alt+P: Alternar operador</span>
             </div>
 
             {/* Typography / Palette button */}
@@ -487,21 +514,6 @@ export function ProjectionView({
                 >
                   {phrases[currentPhraseIndex] || song.title}
                 </h1>
-
-                {/* Next Phrase Preview Below */}
-                {currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
-                  <p 
-                    className={cn(
-                      "text-white/25 text-center mt-6 select-none font-medium italic transition-opacity leading-snug",
-                      fontFamily === 'serif' ? 'font-serif' : 'font-sans'
-                    )}
-                    style={{
-                      fontSize: 'clamp(1rem, 2.5vw, 2rem)',
-                    }}
-                  >
-                    {phrases[currentPhraseIndex + 1]}
-                  </p>
-                )}
               </motion.div>
             </AnimatePresence>
           )}
@@ -777,6 +789,61 @@ export function ProjectionView({
         )}
       </AnimatePresence>
       </div>
+
+      {/* Safety Lock Confirmation Modal (Linha única horizontal ultra minimalista no CENTRO DA TELA) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showExitConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[99999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 select-none"
+              onClick={() => setShowExitConfirm(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 6 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 6 }}
+                transition={{ duration: 0.15 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#10121a]/98 border border-white/20 rounded-2xl px-6 py-4 shadow-2xl backdrop-blur-2xl flex items-center gap-4 select-none"
+                style={{ boxShadow: '0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(0,0,0,0.5)' }}
+              >
+                <span className="text-sm font-semibold text-white whitespace-nowrap">
+                  Encerrar projeção?
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={() => setShowExitConfirm(false)}
+                    className="py-1.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-neutral-200 font-medium text-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                  >
+                    Continuar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (audioElement) {
+                        audioElement.pause();
+                        audioElement.currentTime = 0;
+                      }
+                      setShowExitConfirm(false);
+                      onClose();
+                    }}
+                    className="py-1.5 px-4 rounded-xl bg-red-500/25 hover:bg-red-500/35 border border-red-500/40 text-red-200 font-semibold text-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                  >
+                    Sim, Encerrar
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

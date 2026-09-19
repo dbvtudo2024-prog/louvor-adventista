@@ -40,6 +40,7 @@ import { Collection, Song, LiturgyCategory } from './types';
 import { MOCK_COLLECTIONS, MOCK_SONGS } from './data';
 import { AdminView } from './components/AdminView';
 import { ProjectionView } from './components/ProjectionView';
+import { ProjectionMiniature } from './components/ProjectionMiniature';
 import { ProjectedOnlyView } from './components/ProjectedOnlyView';
 import { SlideEditorModal } from './components/SlideEditorModal';
 import { AlbumDetailView } from './components/AlbumDetailView';
@@ -54,7 +55,7 @@ import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { MusicEmblem } from './components/MusicEmblem';
 import { useTheme } from './context/ThemeContext';
 import { AtmosphericBackground } from './components/AtmosphericBackground';
-import { broadcastToProjection, openSecondaryProjectionWindow } from './utils/projectionSync';
+import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected } from './utils/projectionSync';
 import { LiturgiaSidebar } from './components/LiturgiaSidebar';
 import { LiturgiaFloatingView } from './components/LiturgiaFloatingView';
 
@@ -158,6 +159,7 @@ function AppContent() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [audio] = useState(new Audio());
   const [isProjecting, setIsProjecting] = useState(false);
+  const [isProjectionMinimized, setIsProjectionMinimized] = useState(false);
   const [isProjectOnlyMode, setIsProjectOnlyMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return new URLSearchParams(window.location.search).get('project') === 'true';
@@ -192,15 +194,47 @@ function AppContent() {
   const [isTelasModalOpen, setIsTelasModalOpen] = useState(false);
   const [isLiturgiaSidebarCollapsed, setIsLiturgiaSidebarCollapsed] = useState(true);
   const [editingSongForSlides, setEditingSongForSlides] = useState<Song | null>(null);
-  const { accent, isDarkMode } = useTheme();
+  const [isProjectionWindowActive, setIsProjectionWindowActive] = useState(false);
+  const { accent, isDarkMode, isMenuInverted } = useTheme();
 
-  const handlePlaySong = (songToPlay: Song) => {
+  useEffect(() => {
+    // Se for o projetor secundário rodando em ?project=true, não reseta o status para 'closed'
+    if (isProjectOnlyMode) return;
+
+    // Ao iniciar o programa principal, garante que qualquer projeção e miniatura iniciem totalmente desativadas
+    setIsProjecting(false);
+    setIsProjectionMinimized(false);
+    setIsPlaying(false);
+    try {
+      if (!isProjectionWindowOpen()) {
+        localStorage.setItem('projection_active_status', 'closed');
+        localStorage.removeItem('projection_active_song_id');
+        localStorage.removeItem('projection_active_type');
+      }
+    } catch (e) {}
+    setIsProjectionWindowActive(isProjectionWindowOpen());
+
+    const interval = setInterval(() => {
+      setIsProjectionWindowActive(isProjectionWindowOpen());
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isProjectOnlyMode]);
+
+  const handleToggleProjectionWindow = useCallback(() => {
+    toggleSecondaryProjectionWindow(selectedSong || undefined);
+  }, [selectedSong]);
+
+  const handlePlaySong = async (songToPlay: Song) => {
     setSelectedSong(songToPlay);
     setIsPlaying(true);
     setIsProjecting(true);
+    setIsProjectionMinimized(true);
 
     try {
+      localStorage.setItem('projection_active_type', 'song');
+      localStorage.setItem('projection_active_song_id', songToPlay.id);
       localStorage.setItem('projection_current_song', JSON.stringify(songToPlay));
+      localStorage.setItem('projection_current_index', '0');
     } catch (e) {}
 
     broadcastToProjection({
@@ -208,6 +242,11 @@ function AppContent() {
       song: songToPlay,
       index: 0
     });
+
+    // Abre e sincroniza a tela de projeção externa imediatamente (igual ao sorteio e relógio)
+    try {
+      await openSecondaryProjectionWindow(songToPlay);
+    } catch (e) {}
   };
 
   const handleSaveSongSlides = async (updatedSong: Song) => {
@@ -358,7 +397,11 @@ function AppContent() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isSlideMode || isProjecting) {
+        if (isProjecting) {
+          // Trava de segurança: a confirmação de saída é tratada pelo ProjectionView
+          return;
+        }
+        if (isSlideMode) {
           handleBack();
           return;
         }
@@ -921,6 +964,7 @@ function AppContent() {
     }
 
     if (newView === 'song' && data?.song) {
+      setView('song');
       handlePlaySong(data.song);
       return;
     }
@@ -1000,44 +1044,17 @@ function AppContent() {
   }
 
   if (isProjectOnlyMode) {
-    let song = projectOnlySongId ? (songs.find(s => s.id === projectOnlySongId) || null) : null;
-    
-    if (!song && projectOnlySongId) {
-      try {
-        const raw = localStorage.getItem('projection_current_song');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && (parsed.id === projectOnlySongId || parsed.title)) {
-            song = parsed;
-          }
-        }
-      } catch (e) {}
-    }
+    let song: Song | null = null;
+    const activeType = typeof window !== 'undefined' ? localStorage.getItem('projection_active_type') : null;
 
-    if (!song && projectOnlySongId) {
-      try {
-        const raw = localStorage.getItem('adventist_projection_payload');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.song && (parsed.song.id === projectOnlySongId || parsed.song.title)) {
-            song = parsed.song;
-          }
-        }
-      } catch (e) {}
-    }
-
-    if (!song && projectOnlySongId) {
-      song = MOCK_SONGS.find(s => s.id === projectOnlySongId) || null;
-    }
-
-    if (!song && projectOnlySongId === 'sorteio-projection') {
-      let winner = '1';
+    if (projectOnlySongId === 'sorteio-projection' || activeType === 'sorteio') {
+      let winner = '?';
       let winners: any[] = [];
       try {
         const raw = localStorage.getItem('projection_sorteio_data');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed.winner !== undefined) winner = String(parsed.winner);
+          if (parsed.winner !== undefined && parsed.winner !== null) winner = String(parsed.winner);
           if (Array.isArray(parsed.winners)) winners = parsed.winners;
         }
       } catch (e) {}
@@ -1050,7 +1067,68 @@ function AppContent() {
         lyrics: winner,
         author: JSON.stringify({ winner, winners })
       };
+    } else if (projectOnlySongId === 'church-clock-projection' || activeType === 'church-clock') {
+      const churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+      const districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+      song = {
+        id: 'church-clock-projection',
+        collection_id: 'utilitarios',
+        category: 'church-clock',
+        title: churchName,
+        lyrics: districtName,
+        author: JSON.stringify({ churchName, districtName })
+      };
+    } else if (activeType === 'song') {
+      try {
+        const raw = localStorage.getItem('projection_current_song');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.id && parsed.id !== 'sorteio-projection' && parsed.id !== 'church-clock-projection') {
+            song = parsed;
+          }
+        }
+      } catch (e) {}
+    } else if (projectOnlySongId) {
+      song = songs.find(s => s.id === projectOnlySongId) || null;
+      if (!song) {
+        try {
+          const raw = localStorage.getItem('projection_current_song');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.id === projectOnlySongId) {
+              song = parsed;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!song) {
+        try {
+          const raw = localStorage.getItem('adventist_projection_payload');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.song && parsed.song.id === projectOnlySongId) {
+              song = parsed.song;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!song) {
+        song = MOCK_SONGS.find(s => s.id === projectOnlySongId) || null;
+      }
+    } else {
+      try {
+        const raw = localStorage.getItem('projection_current_song');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.id) {
+            song = parsed;
+          }
+        }
+      } catch (e) {}
     }
+
     return <ProjectedOnlyView song={song} />;
   }
 
@@ -1085,27 +1163,33 @@ function AppContent() {
       {/* Dynamic Background Atmosphere responding to theme accent and dark/light mode */}
       <AtmosphericBackground />
 
-      {/* Top Navigation Bar */}
-      <TopBar
-        zoomLevel={zoomLevel}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onZoomReset={handleZoomReset}
-        onOpenTelas={() => setIsTelasModalOpen(true)}
-        onOpenProjectOnly={() => {
-          openSecondaryProjectionWindow(selectedSong?.id);
-        }}
-        onToggleProjection={() => {
-          openSecondaryProjectionWindow(selectedSong?.id);
-        }}
-      />
+      {/* Top Navigation Bar (Normal: TopBar, Inverted: BottomDock) */}
+      {!isMenuInverted ? (
+        <TopBar
+          zoomLevel={zoomLevel}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
+          onOpenTelas={() => setIsTelasModalOpen(true)}
+          onOpenProjectOnly={handleToggleProjectionWindow}
+          onToggleProjection={handleToggleProjectionWindow}
+          isProjectionOpen={isProjectionWindowActive}
+          canProject={Boolean(selectedSong || isPlaying)}
+        />
+      ) : (
+        <BottomDock
+          currentTab={currentTab}
+          onSelectTab={handleSelectTab}
+        />
+      )}
 
       {/* Main Content */}
       <main 
         ref={mainRef}
         onScroll={handleScroll}
         className={cn(
-          "flex-1 min-h-0 w-full overflow-hidden pb-16 sm:pb-20 relative z-10 transition-all duration-300",
+          "flex-1 min-h-0 w-full overflow-hidden relative z-10 transition-all duration-300",
+          isMenuInverted ? "pt-16 sm:pt-20 pb-16 sm:pb-20" : "pb-16 sm:pb-20",
           currentTab !== 'liturgia' && (!isLiturgiaSidebarCollapsed ? "md:pr-72 lg:pr-80" : "pr-0")
         )}
       >
@@ -1465,8 +1549,7 @@ function AppContent() {
                       <div className="flex items-center gap-2 shrink-0">
                         <button 
                           onClick={() => {
-                            setIsPlaying(!isPlaying);
-                            setIsProjecting(true);
+                            handlePlaySong(selectedSong);
                           }}
                           className="w-10 h-10 rounded-full text-neutral-950 shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95 cursor-pointer"
                           style={{ backgroundColor: accent.hex }}
@@ -1476,8 +1559,7 @@ function AppContent() {
                         </button>
                         <button 
                           onClick={() => {
-                            setIsPlaying(true);
-                            setIsProjecting(true);
+                            handlePlaySong(selectedSong);
                           }}
                           className="w-10 h-10 rounded-full bg-neutral-800 text-neutral-300 shadow-sm flex items-center justify-center hover:bg-neutral-700 transition-all active:scale-95 cursor-pointer"
                           style={{ color: accent.hex }}
@@ -1668,13 +1750,7 @@ function AppContent() {
                 songs={songs}
                 onSelectSong={(song) => navigateTo('song', { song })}
                 onProjectSong={(song) => {
-                  setSelectedSong(song);
-                  setIsProjecting(true);
-                  broadcastToProjection({
-                    type: 'PROJECT_SONG',
-                    song,
-                    index: 0
-                  });
+                  handlePlaySong(song);
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
@@ -1691,6 +1767,9 @@ function AppContent() {
                   setSelectedSong(verseSong);
                   // Na Bíblia não precisa de tela do utilizador (ProjectionView) - mantém o operador na tela da Bíblia!
                   try {
+                    localStorage.setItem('projection_active_status', 'open');
+                    localStorage.setItem('projection_active_type', 'bible');
+                    localStorage.setItem('projection_active_song_id', verseSong.id);
                     localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
                     localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
                   } catch (e) {}
@@ -1700,6 +1779,12 @@ function AppContent() {
                     index: 0
                   });
                   openSecondaryProjectionWindow(verseSong);
+                  setIsProjectionWindowActive(true);
+                }}
+                isProjecting={isProjectionWindowActive}
+                onCloseProjection={() => {
+                  closeProjectionWindow();
+                  setIsProjectionWindowActive(false);
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
@@ -1753,21 +1838,30 @@ function AppContent() {
           isCollapsed={isLiturgiaSidebarCollapsed}
           onToggleCollapse={() => setIsLiturgiaSidebarCollapsed(prev => !prev)}
           onProjectSong={(song) => {
-            broadcastToProjection({
-              type: 'PROJECT_SONG',
-              song,
-              index: 0
-            });
-            openSecondaryProjectionWindow(song.id);
+            handlePlaySong(song);
           }}
         />
       )}
 
-      {/* Bottom Navigation Dock matching Reference Image */}
-      <BottomDock
-        currentTab={currentTab}
-        onSelectTab={handleSelectTab}
-      />
+      {/* Bottom Bar (Normal: BottomDock, Inverted: TopBar) */}
+      {!isMenuInverted ? (
+        <BottomDock
+          currentTab={currentTab}
+          onSelectTab={handleSelectTab}
+        />
+      ) : (
+        <TopBar
+          zoomLevel={zoomLevel}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
+          onOpenTelas={() => setIsTelasModalOpen(true)}
+          onOpenProjectOnly={handleToggleProjectionWindow}
+          onToggleProjection={handleToggleProjectionWindow}
+          isProjectionOpen={isProjectionWindowActive}
+          canProject={Boolean(selectedSong || isPlaying)}
+        />
+      )}
 
       {/* Screens & Projection Manager Modal */}
       <TelasModal
@@ -1781,13 +1875,15 @@ function AppContent() {
             setIsProjecting(true);
           }
         }}
-        onOpenProjectOnly={(targetScreen) => {
-          const url = `${window.location.origin}/?project=true`;
+        onOpenProjectOnly={(targetScreen, isRetorno = false) => {
+          const songIdParam = selectedSong ? `&songId=${encodeURIComponent(selectedSong.id)}` : '';
+          const retornoParam = isRetorno ? '&retorno=true' : '';
+          const url = `${window.location.origin}/?project=true${songIdParam}${retornoParam}&fullscreen=true`;
           const left = targetScreen?.left ?? window.screen.availWidth ?? 1920;
           const top = targetScreen?.top ?? 0;
           const width = targetScreen?.width ?? 1920;
           const height = targetScreen?.height ?? 1080;
-          window.open(url, '_blank', `left=${left},top=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no`);
+          window.open(url, isRetorno ? 'louvor_adventista_return_screen' : 'louvor_adventista_projection_screen', `left=${left},top=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no`);
         }}
         remoteRoomId={remoteRoomId}
         copied={copied}
@@ -2258,21 +2354,42 @@ function AppContent() {
           )}
         </AnimatePresence>
 
-        {isProjecting && selectedSong && (
+        {isProjecting && selectedSong && !isProjectionMinimized && (
           <ProjectionView 
             song={selectedSong}
             isPlaying={isPlaying}
             onTogglePlay={() => setIsPlaying(!isPlaying)}
             onUpdateSong={handleUpdateSong}
             onOpenSlideEditor={(song) => setEditingSongForSlides(song)}
+            onMinimize={() => setIsProjectionMinimized(true)}
             onClose={() => {
               setIsProjecting(false);
               setIsPlaying(false);
+              setIsProjectionMinimized(false);
               audio.currentTime = 0;
+              closeProjectionWindow();
             }}
             audioElement={audio}
             remoteRoomId={remoteRoomId}
             fontFamily={fontFamily}
+          />
+        )}
+
+        {/* Miniatura da Projeção à direita acima do menu inferior quando minimizada */}
+        {isProjecting && selectedSong && isProjectionMinimized && (
+          <ProjectionMiniature
+            song={selectedSong}
+            isPlaying={isPlaying}
+            onTogglePlay={() => setIsPlaying(!isPlaying)}
+            onRestore={() => setIsProjectionMinimized(false)}
+            onClose={() => {
+              setIsProjecting(false);
+              setIsPlaying(false);
+              setIsProjectionMinimized(false);
+              audio.currentTime = 0;
+              closeProjectionWindow();
+            }}
+            audioElement={audio}
           />
         )}
 

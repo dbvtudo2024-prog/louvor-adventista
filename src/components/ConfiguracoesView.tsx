@@ -6,6 +6,7 @@ import {
   Keyboard, Settings2, Sliders, Volume2, Maximize2
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { cn } from '../lib/utils';
 
 interface ConfiguracoesViewProps {
   onBackToHome?: () => void;
@@ -21,9 +22,11 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
     accent,
     isDarkMode,
     interacao,
+    isMenuInverted,
     setAccentColor,
     toggleTheme,
     setInteracao,
+    toggleMenuInverted,
   } = useTheme();
 
   const activeAccent = accent;
@@ -56,9 +59,15 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   };
 
   return (
-    <div className="w-full h-full max-w-6xl mx-auto px-4 py-2 flex flex-col text-white select-none overflow-hidden">
+    <div className={cn(
+      "w-full h-full max-w-6xl mx-auto px-4 sm:px-6 flex flex-col text-white select-none overflow-hidden transition-all duration-300",
+      isMenuInverted ? "pt-5 sm:pt-7 pb-4" : "py-2 sm:py-3"
+    )}>
       {/* TOP NAVIGATION TABS */}
-      <div className="flex items-center gap-6 sm:gap-10 border-b border-neutral-800/80 px-2 shrink-0">
+      <div className={cn(
+        "flex items-center gap-6 sm:gap-10 border-b border-neutral-800/80 px-2 shrink-0 transition-all",
+        isMenuInverted ? "pt-2 pb-1 mb-3 sm:mb-4" : "mb-1 sm:mb-2"
+      )}>
         <button
           onClick={() => setActiveTab('aparencia')}
           className={`pb-2.5 text-sm sm:text-base font-bold transition-all relative ${
@@ -354,6 +363,38 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
             </h3>
             
             <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-neutral-900 rounded-xl border border-neutral-800">
+                <div className="pr-4">
+                  <p className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Inverter Menu</span>
+                    {isMenuInverted && (
+                      <span 
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                        style={{ 
+                          backgroundColor: `${accent.hex}20`, 
+                          color: accent.hex, 
+                          borderColor: `${accent.hex}40` 
+                        }}
+                      >
+                        Ativo
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Troca a barra de abas inferior para o topo e move a barra superior de controles para o rodapé.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleMenuInverted()}
+                  className="w-11 h-6 rounded-full transition-colors relative p-0.5 shrink-0 cursor-pointer"
+                  style={{ backgroundColor: isMenuInverted ? accent.hex : '#262626' }}
+                  title="Inverter posição dos menus superior e inferior"
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${isMenuInverted ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
               <div className="flex items-center justify-between p-3 bg-neutral-900 rounded-xl border border-neutral-800">
                 <div>
                   <p className="text-xs font-bold text-white">Rolagem Automática das Letras</p>

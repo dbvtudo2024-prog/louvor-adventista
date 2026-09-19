@@ -11,6 +11,8 @@ interface TopBarProps {
   onOpenTelas: () => void;
   onOpenProjectOnly: () => void;
   onToggleProjection: () => void;
+  isProjectionOpen?: boolean;
+  canProject?: boolean;
 }
 
 export function TopBar({
@@ -21,14 +23,17 @@ export function TopBar({
   onOpenTelas,
   onOpenProjectOnly,
   onToggleProjection,
+  isProjectionOpen = false,
+  canProject = false,
 }: TopBarProps) {
-  const { accent, isDarkMode } = useTheme();
+  const { accent, isDarkMode, isMenuInverted } = useTheme();
 
   return (
     <header 
       className={cn(
-        "sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between shadow-md select-none border-b transition-colors duration-500",
-        isDarkMode ? "bg-[#101216]/90 text-white border-neutral-800/80" : "bg-white/90 text-neutral-900 border-neutral-200"
+        "z-40 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between select-none transition-colors duration-500",
+        isMenuInverted ? "fixed bottom-0 left-0 right-0 border-t shadow-lg" : "sticky top-0 border-b shadow-md",
+        isDarkMode ? "bg-[#101216]/95 text-white border-neutral-800/80" : "bg-white/95 text-neutral-900 border-neutral-200"
       )}
     >
       {/* Left: Clean Branding without back button or page title */}
@@ -88,14 +93,37 @@ export function TopBar({
           <span>Telas</span>
         </button>
 
-        {/* Iniciar Projeção em Outra Tela (Abre janela do projetor vazia / sem conteúdo inicial) */}
+        {/* Iniciar ou Fechar Projeção em Outra Tela (Inicia desativado quando não há música selecionada) */}
         <button
           onClick={onToggleProjection}
-          className="px-3 py-1.5 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/60 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95"
-          title="Iniciar Projeção em outra tela (sem conteúdo)"
+          disabled={!isProjectionOpen && !canProject}
+          className={cn(
+            "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none",
+            isProjectionOpen 
+              ? "bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 cursor-pointer active:scale-95" 
+              : !canProject
+                ? "bg-neutral-900/50 text-neutral-500 border border-neutral-800/60 cursor-not-allowed opacity-40 shadow-none pointer-events-none sm:pointer-events-auto"
+                : "bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/60 cursor-pointer active:scale-95"
+          )}
+          title={
+            isProjectionOpen 
+              ? "Fechar Projeção na outra tela" 
+              : !canProject 
+                ? "Selecione uma música para iniciar a projeção" 
+                : "Iniciar Projeção em outra tela"
+          }
         >
-          <Monitor className="w-4 h-4 text-amber-400" style={{ color: accent.hex }} />
-          <span className="hidden sm:inline">Iniciar Projeção</span>
+          <Monitor 
+            className="w-4 h-4" 
+            style={{ 
+              color: isProjectionOpen 
+                ? '#ef4444' 
+                : !canProject 
+                  ? '#525252' 
+                  : accent.hex 
+            }} 
+          />
+          <span className="hidden sm:inline">{isProjectionOpen ? 'Fechar Projeção' : 'Iniciar Projeção'}</span>
         </button>
       </div>
     </header>

@@ -7,8 +7,9 @@ import {
 } from 'lucide-react';
 import { Song } from '../types';
 import { useTheme } from '../context/ThemeContext';
-import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection } from '../utils/projectionSync';
+import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection, isProjectionWindowOpen, closeProjectionWindow } from '../utils/projectionSync';
 import { SlideEditorModal } from './SlideEditorModal';
+import { RandomInnerParticles } from './SpecialProjections';
 
 interface UtilitariosViewProps {
   onProjectContent: (song: Song) => void;
@@ -130,6 +131,10 @@ export function UtilitariosView({
   };
 
   const handleProjectTimer = () => {
+    if (isProjectionWindowOpen()) {
+      closeProjectionWindow();
+      return;
+    }
     const songContent: Song = {
       id: 'timer-projection',
       collection_id: 'utilitarios',
@@ -137,6 +142,7 @@ export function UtilitariosView({
       lyrics: `O Culto começará em breve\n\n[T:0] ${formatCronometro(timerRemainingSeconds)}\nMomento de reverência e oração`
     };
     onProjectContent(songContent);
+    openSecondaryProjectionWindow(songContent);
   };
 
   // ==========================================
@@ -197,10 +203,41 @@ export function UtilitariosView({
   const handleLimparHistorico = () => {
     setSortedWinners([]);
     setCurrentWinner(null);
+    const emptyPayload = { winner: '?', winners: [] };
+    const emptySong: Song = {
+      id: 'sorteio-projection',
+      collection_id: 'utilitarios',
+      category: 'sorteio',
+      title: 'Sorteio',
+      lyrics: '?',
+      author: JSON.stringify(emptyPayload)
+    };
+    try {
+      localStorage.setItem('projection_sorteio_data', JSON.stringify(emptyPayload));
+      localStorage.setItem('projection_current_song', JSON.stringify(emptySong));
+    } catch (e) {}
+    broadcastToProjection({
+      type: 'SORTEIO_UPDATE',
+      song: emptySong,
+      data: emptyPayload
+    });
   };
 
   const handleUndoWinner = (winnerId: string) => {
-    setSortedWinners(prev => prev.filter(w => w.id !== winnerId));
+    const updated = sortedWinners.filter(w => w.id !== winnerId);
+    setSortedWinners(updated);
+    const nextWinner = updated.length > 0 ? updated[0].value : (currentWinner !== null ? currentWinner : '?');
+    const payload = {
+      winner: nextWinner,
+      winners: updated
+    };
+    try {
+      localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+    } catch (e) {}
+    broadcastToProjection({
+      type: 'SORTEIO_UPDATE',
+      data: payload
+    });
   };
 
   // Sortear
@@ -210,7 +247,6 @@ export function UtilitariosView({
     const eligible = availableItems.filter(item => !sortedValuesSet.has(String(item)));
 
     if (eligible.length === 0) {
-      alert('Todos os itens já foram sorteados! Resete ou adicione novos itens.');
       return;
     }
 
@@ -220,6 +256,30 @@ export function UtilitariosView({
       const tempRand = eligible[Math.floor(Math.random() * eligible.length)];
       setCurrentWinner(tempRand);
       counter++;
+
+      // Sincroniza os números girando em tempo real com a tela de projeção
+      const spinPayload = {
+        winner: tempRand,
+        winners: sortedWinners
+      };
+      const spinSong: Song = {
+        id: 'sorteio-projection',
+        collection_id: 'utilitarios',
+        category: 'sorteio',
+        title: 'Sorteio',
+        lyrics: String(tempRand),
+        author: JSON.stringify(spinPayload)
+      };
+      try {
+        localStorage.setItem('projection_active_type', 'sorteio');
+        localStorage.setItem('projection_sorteio_data', JSON.stringify(spinPayload));
+        localStorage.setItem('projection_current_song', JSON.stringify(spinSong));
+      } catch (e) {}
+      broadcastToProjection({
+        type: 'SORTEIO_UPDATE',
+        song: spinSong,
+        data: spinPayload
+      });
 
       if (counter > 22) {
         clearInterval(interval);
@@ -249,6 +309,7 @@ export function UtilitariosView({
           author: JSON.stringify(payload)
         };
         try {
+          localStorage.setItem('projection_active_type', 'sorteio');
           localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
           localStorage.setItem('projection_current_song', JSON.stringify(songContent));
         } catch (e) {}
@@ -269,9 +330,10 @@ export function UtilitariosView({
   // Responde imediatamente a pedidos de sincronização da tela de projeção
   useEffect(() => {
     const unsubscribe = subscribeToProjection((msg) => {
-      if (msg.type === 'REQUEST_SYNC' && currentWinner !== null) {
+      if (msg.type === 'REQUEST_SYNC') {
+        const displayWinner = currentWinner !== null ? currentWinner : (sortedWinners.length > 0 ? sortedWinners[0].value : '?');
         const payload = {
-          winner: currentWinner,
+          winner: displayWinner,
           winners: sortedWinners
         };
         const songContent: Song = {
@@ -279,9 +341,14 @@ export function UtilitariosView({
           collection_id: 'utilitarios',
           category: 'sorteio',
           title: 'Sorteio',
-          lyrics: String(currentWinner),
+          lyrics: String(displayWinner),
           author: JSON.stringify(payload)
         };
+        try {
+          localStorage.setItem('projection_active_type', 'sorteio');
+          localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+          localStorage.setItem('projection_current_song', JSON.stringify(songContent));
+        } catch (e) {}
         broadcastToProjection({
           type: 'SORTEIO_UPDATE',
           song: songContent,
@@ -293,9 +360,28 @@ export function UtilitariosView({
   }, [currentWinner, sortedWinners]);
 
   const [projectedSuccessNotice, setProjectedSuccessNotice] = useState(false);
+  const [isSorteioProjecting, setIsSorteioProjecting] = useState(() => {
+    return isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'sorteio-projection';
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const open = isProjectionWindowOpen();
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      setIsSorteioProjecting(open && currentTarget === 'sorteio-projection');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleProjectSorteio = () => {
-    const displayWinner = currentWinner !== null ? currentWinner : '?';
+    if (isSorteioProjecting || (isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'sorteio-projection')) {
+      closeProjectionWindow();
+      setIsSorteioProjecting(false);
+      setProjectedSuccessNotice(false);
+      return;
+    }
+
+    const displayWinner = currentWinner !== null ? currentWinner : (sortedWinners.length > 0 ? sortedWinners[0].value : '?');
     const sorteioPayload = {
       winner: displayWinner,
       winners: sortedWinners
@@ -312,6 +398,7 @@ export function UtilitariosView({
 
     // Salva no localStorage para redundância
     try {
+      localStorage.setItem('projection_active_type', 'sorteio');
       localStorage.setItem('projection_sorteio_data', JSON.stringify(sorteioPayload));
       localStorage.setItem('projection_current_song', JSON.stringify(songContent));
     } catch (e) {}
@@ -330,6 +417,7 @@ export function UtilitariosView({
     // Abre a tela secundária diretamente (sem mudar a tela do operador para o slide controller)
     openSecondaryProjectionWindow('sorteio-projection');
 
+    setIsSorteioProjecting(true);
     setProjectedSuccessNotice(true);
     setTimeout(() => setProjectedSuccessNotice(false), 3000);
   };
@@ -985,19 +1073,28 @@ export function UtilitariosView({
               
               {/* Central Glowing Roulette Arena */}
               <div className="relative w-52 h-52 sm:w-64 sm:h-64 md:w-72 md:h-72 flex items-center justify-center shrink-0">
-                {/* Ambient Dynamic Theme Particle Rings */}
-                <div 
-                  className="absolute inset-0 rounded-full border pointer-events-none"
-                  style={{ borderColor: `${accent.hex}30` }}
+                {/* Outer spinning dashed ring */}
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 30, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-2 border-dashed pointer-events-none"
+                  style={{ borderColor: `${accent.hex}35` }}
                 />
-                <div 
-                  className="absolute inset-3 sm:inset-4 rounded-full border border-dashed pointer-events-none"
-                  style={{ borderColor: `${accent.hex}40` }}
+                {/* Counter-spinning dotted ring */}
+                <motion.div 
+                  animate={{ rotate: -360 }}
+                  transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
+                  className="absolute inset-3 sm:inset-4 rounded-full border border-dotted pointer-events-none"
+                  style={{ borderColor: `${accent.hex}45` }}
                 />
+
                 <div 
-                  className="absolute inset-6 sm:inset-8 rounded-full shadow-2xl"
+                  className="absolute inset-6 sm:inset-8 rounded-full shadow-2xl overflow-hidden"
                   style={{ background: `radial-gradient(circle, ${accent.hex}20 0%, ${accent.hex}05 60%, rgba(10,10,10,0.95) 100%)` }}
-                />
+                >
+                  {/* Loose random particles floating inside circle */}
+                  <RandomInnerParticles count={20} accentColor={accent.hex} />
+                </div>
 
                 {/* Winner Display Inside Circle */}
                 <div className="relative z-10 flex flex-col items-center justify-center text-center px-4">
@@ -1068,6 +1165,9 @@ export function UtilitariosView({
                         <span className="w-5 h-5 rounded-full bg-[#0ea5e9] text-[#082f49] font-bold font-mono text-[10px] flex items-center justify-center shrink-0">
                           {winner.order}
                         </span>
+                        <span className="text-[10px] uppercase font-bold text-amber-400">
+                          Vencedor:
+                        </span>
                         <span className="font-mono font-bold text-white truncate text-xs sm:text-sm">
                           {winner.value}
                         </span>
@@ -1111,12 +1211,19 @@ export function UtilitariosView({
 
             <button
               onClick={handleProjectSorteio}
-              disabled={currentWinner === null}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full hover:scale-105 active:scale-95 shadow-2xl flex items-center justify-center transition-all cursor-pointer border-2 border-neutral-900 disabled:opacity-50 hover:brightness-110"
-              style={{ backgroundColor: accent.hex }}
-              title="Projetar resultado no telão externo"
+              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full hover:scale-105 active:scale-95 shadow-2xl flex items-center justify-center transition-all cursor-pointer border-2 ${
+                isSorteioProjecting
+                  ? 'bg-red-600 border-red-500 hover:bg-red-500'
+                  : 'border-neutral-900 hover:brightness-110'
+              }`}
+              style={!isSorteioProjecting ? { backgroundColor: accent.hex } : undefined}
+              title={isSorteioProjecting ? "Fechar projeção externa do sorteio" : "Projetar sorteio no telão externo"}
             >
-              <Presentation className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-950 stroke-[2.2]" />
+              {isSorteioProjecting ? (
+                <X className="w-5 h-5 sm:w-6 sm:h-6 text-white stroke-[2.5]" />
+              ) : (
+                <Presentation className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-950 stroke-[2.2]" />
+              )}
             </button>
           </div>
         </div>
