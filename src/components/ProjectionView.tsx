@@ -201,6 +201,8 @@ export function ProjectionView({
   useEffect(() => {
     try {
       localStorage.setItem('projection_current_song', JSON.stringify(song));
+      localStorage.setItem('projection_active_type', 'song');
+      localStorage.setItem('projection_active_song_id', song.id);
     } catch (e) {}
 
     safePostMessage({ type: 'PROJECT_SONG', song, index: currentPhraseIndex || 0 });

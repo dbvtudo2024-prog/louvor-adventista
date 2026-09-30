@@ -304,7 +304,7 @@ export async function detectSecondaryScreen(): Promise<SecondaryScreenInfo> {
 
   return {
     hasSecondary: false,
-    left: window.screen.availWidth ?? 1920,
+    left: 0,
     top: 0,
     width: window.screen.availWidth ?? 1920,
     height: window.screen.availHeight ?? 1080
@@ -413,8 +413,16 @@ export async function openSecondaryProjectionWindow(songOrId?: string | Song, is
   const width = screenInfo.width;
   const height = screenInfo.height;
 
-  const url = `${window.location.origin}/?project=true${songId ? `&songId=${encodeURIComponent(songId)}` : ''}${isRetorno ? '&retorno=true' : ''}&fullscreen=true`;
-  const features = `left=${left},top=${top},screenX=${left},screenY=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no,location=no,scrollbars=no,resizable=yes`;
+  let url = `${window.location.origin}/?project=true${songId ? `&songId=${encodeURIComponent(songId)}` : ''}${isRetorno ? '&retorno=true' : ''}&fullscreen=true`;
+  if (songObj && (songObj.category === 'Bíblia' || songObj.collection_id === 'biblia' || songObj.id?.startsWith('bible-'))) {
+    if (songObj.lyrics) {
+      url += `&verseText=${encodeURIComponent(songObj.lyrics)}`;
+    }
+    if (songObj.title || songObj.author) {
+      url += `&verseRef=${encodeURIComponent(songObj.title || songObj.author || '')}`;
+    }
+  }
+  const features = `left=${left},top=${top},screenX=${left},screenY=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no,location=no,scrollbars=no,resizable=yes,popup=yes,fullscreen=yes`;
 
   // Reuse existing window if still open (do not reload or steal focus to preserve fullscreen state)
   if (activeProjectionWin && !activeProjectionWin.closed) {
@@ -433,6 +441,12 @@ export async function openSecondaryProjectionWindow(songOrId?: string | Song, is
   const win = window.open(url, isRetorno ? 'louvor_adventista_return_screen' : 'louvor_adventista_projection_screen', features);
   if (!isRetorno) {
     activeProjectionWin = win;
+  }
+
+  if (win) {
+    try {
+      win.focus();
+    } catch (e) {}
   }
 
   if (win) {

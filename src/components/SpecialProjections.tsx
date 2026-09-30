@@ -2,6 +2,14 @@ import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { broadcastToProjection, subscribeToProjection } from '../utils/projectionSync';
+import { 
+  saveChurchLogoToDb, 
+  getChurchLogoFromDb, 
+  deleteChurchLogoFromDb,
+  saveChurchConfigToDb, 
+  getChurchConfigFromDb 
+} from '../utils/churchDb';
 
 export interface RandomInnerParticlesProps {
   count?: number;
@@ -294,14 +302,201 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
   );
 }
 
+export interface ChurchScreenConfig {
+  logoUrl?: string;
+  logoSize: number; // in px
+  churchNameSize: number; // in px
+  districtSize: number; // in px
+  clockSize: number; // in px
+  showRings?: boolean;
+}
+
+export const DEFAULT_CHURCH_CONFIG: ChurchScreenConfig = {
+  logoUrl: '',
+  logoSize: 100,
+  churchNameSize: 52,
+  districtSize: 22,
+  clockSize: 105,
+  showRings: true,
+};
+
+/**
+ * Resizes and compresses an uploaded image file client-side to ensure it never exceeds storage quotas
+ * and loads instantaneously across all projection displays.
+ */
+export function compressImageFile(file: File, maxDimension = 600, quality = 0.9): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDimension || h > maxDimension) {
+          if (w > h) {
+            h = Math.round((h * maxDimension) / w);
+            w = maxDimension;
+          } else {
+            w = Math.round((w * maxDimension) / h);
+            h = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve((e.target?.result as string) || '');
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+        resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+      };
+      img.onerror = () => resolve((e.target?.result as string) || '');
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Compresses an existing base64 data URL to ensure it never exceeds browser storage limits.
+ */
+export function compressImageDataUrl(dataUrl: string, maxDimension = 600, quality = 0.9): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:image')) {
+    return Promise.resolve(dataUrl || '');
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width;
+      let h = img.height;
+      if (w <= maxDimension && h <= maxDimension && dataUrl.length < 150000) {
+        resolve(dataUrl);
+        return;
+      }
+      if (w > maxDimension || h > maxDimension) {
+        if (w > h) {
+          h = Math.round((h * maxDimension) / w);
+          w = maxDimension;
+        } else {
+          w = Math.round((w * maxDimension) / h);
+          h = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      const isPng = dataUrl.includes('image/png');
+      resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+export function getChurchScreenConfig(): ChurchScreenConfig {
+  try {
+    const raw = localStorage.getItem('church_screen_config');
+    const fallbackLogo = localStorage.getItem('church_logo_url') || '';
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { 
+        ...DEFAULT_CHURCH_CONFIG, 
+        ...parsed, 
+        logoUrl: parsed.logoUrl || fallbackLogo 
+      };
+    } else if (fallbackLogo) {
+      return {
+        ...DEFAULT_CHURCH_CONFIG,
+        logoUrl: fallbackLogo
+      };
+    }
+  } catch (e) {}
+  return DEFAULT_CHURCH_CONFIG;
+}
+
+export function saveChurchScreenConfig(partial: Partial<ChurchScreenConfig>): ChurchScreenConfig {
+  const current = getChurchScreenConfig();
+  const updated = { ...current, ...partial };
+
+  // 1. Try to persist to localStorage (with fallback if logo size triggers quota limits)
+  try {
+    localStorage.setItem('church_screen_config', JSON.stringify(updated));
+    if (updated.logoUrl !== undefined) {
+      localStorage.setItem('church_logo_url', updated.logoUrl);
+    }
+  } catch (quotaErr) {
+    console.warn('localStorage quota warning, preserving sizes and storing media in IndexedDB:', quotaErr);
+    try {
+      // Save settings with blank logoUrl in localStorage so sizes are preserved
+      const configWithoutLogo = { ...updated, logoUrl: '' };
+      localStorage.setItem('church_screen_config', JSON.stringify(configWithoutLogo));
+    } catch (e) {}
+  }
+
+  // 2. Persist to IndexedDB for unlimited, persistent cross-window storage
+  try {
+    saveChurchConfigToDb(updated);
+    if (updated.logoUrl !== undefined) {
+      if (updated.logoUrl) {
+        saveChurchLogoToDb(updated.logoUrl);
+      } else {
+        deleteChurchLogoFromDb();
+      }
+    }
+  } catch (idbErr) {
+    console.warn('IndexedDB save warning:', idbErr);
+  }
+
+  // 3. Dispatch in-window and cross-window events
+  try {
+    window.dispatchEvent(new CustomEvent('church_config_changed', { detail: updated }));
+  } catch (e) {}
+
+  try {
+    broadcastToProjection({
+      type: 'SONG_UPDATED',
+      data: { churchConfig: updated }
+    });
+  } catch (e) {}
+
+  return updated;
+}
+
 interface ChurchClockProjectionProps {
   churchName?: string;
   districtName?: string;
+  config?: ChurchScreenConfig;
 }
 
-export function ChurchClockProjectionScreen({ churchName: initialChurch, districtName: initialDistrict }: ChurchClockProjectionProps) {
+export function ChurchClockProjectionScreen({ 
+  churchName: initialChurch, 
+  districtName: initialDistrict,
+  config: propConfig 
+}: ChurchClockProjectionProps) {
   const { accent } = useTheme();
   const [timeString, setTimeString] = useState('');
+  const [internalConfig, setInternalConfig] = useState<ChurchScreenConfig>(() => {
+    return propConfig ? { ...DEFAULT_CHURCH_CONFIG, ...propConfig } : getChurchScreenConfig();
+  });
+  
+  // Use propConfig if provided and valid, otherwise internalConfig
+  const config = useMemo(() => {
+    return {
+      ...internalConfig,
+      ...(propConfig || {})
+    };
+  }, [internalConfig, propConfig]);
+
   const [churchName, setChurchName] = useState(() => {
     return initialChurch || localStorage.getItem('church_name') || 'Igreja Parque do Sol';
   });
@@ -323,62 +518,159 @@ export function ChurchClockProjectionScreen({ churchName: initialChurch, distric
     return () => clearInterval(interval);
   }, []);
 
-  // Listen to storage or projection broadcast changes
+  // Hydrate logo & config from IndexedDB if not found or on initial load
+  useEffect(() => {
+    getChurchLogoFromDb().then((dbLogo) => {
+      if (dbLogo) {
+        setInternalConfig(prev => {
+          if (!prev.logoUrl || prev.logoUrl !== dbLogo) {
+            return { ...prev, logoUrl: dbLogo };
+          }
+          return prev;
+        });
+      }
+    }).catch(() => {});
+
+    getChurchConfigFromDb().then((dbConfig) => {
+      if (dbConfig) {
+        setInternalConfig(prev => ({ ...prev, ...dbConfig }));
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Update when propConfig changes
+  useEffect(() => {
+    if (propConfig) {
+      setInternalConfig(prev => ({ ...prev, ...propConfig }));
+    }
+  }, [propConfig]);
+
+  // Listen to storage or projection broadcast changes and config updates
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'church_name' && e.newValue) setChurchName(e.newValue);
       if (e.key === 'church_district' && e.newValue) setDistrictName(e.newValue);
+      if (e.key === 'church_screen_config' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setInternalConfig(prev => ({ ...prev, ...parsed }));
+        } catch (err) {}
+      }
+      if (e.key === 'church_logo_url' && e.newValue !== null) {
+        setInternalConfig(prev => ({ ...prev, logoUrl: e.newValue || '' }));
+      }
       if (e.key === 'projection_church_data' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed.churchName) setChurchName(parsed.churchName);
           if (parsed.districtName) setDistrictName(parsed.districtName);
+          if (parsed.churchConfig) {
+            setInternalConfig(prev => ({ ...prev, ...parsed.churchConfig }));
+          }
         } catch (err) {}
       }
     };
+
+    const handleCustomConfig = (e: any) => {
+      if (e.detail) {
+        setInternalConfig(prev => ({ ...prev, ...e.detail }));
+      } else {
+        setInternalConfig(getChurchScreenConfig());
+      }
+    };
+
+    const unsubscribe = subscribeToProjection((msg) => {
+      if (msg.data?.churchConfig) {
+        setInternalConfig(prev => ({ ...prev, ...msg.data.churchConfig }));
+      }
+      if (msg.song?.id === 'church-clock-projection' && msg.song.author && msg.song.author.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(msg.song.author);
+          if (parsed.churchConfig) {
+            setInternalConfig(prev => ({ ...prev, ...parsed.churchConfig }));
+          }
+          if (parsed.churchName) setChurchName(parsed.churchName);
+          if (parsed.districtName) setDistrictName(parsed.districtName);
+        } catch (e) {}
+      }
+    });
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('church_config_changed', handleCustomConfig);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('church_config_changed', handleCustomConfig);
+      unsubscribe();
+    };
   }, []);
 
   return (
-    <div className="w-full h-full bg-[#0a0a0c] flex flex-col justify-center items-center p-8 sm:p-14 md:p-20 overflow-hidden relative select-none">
+    <div className="w-full h-full bg-[#0a0a0c] flex flex-col justify-center items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none">
       {/* Background Radial Glow */}
       <div 
         className="absolute inset-0 pointer-events-none transition-all duration-700 ease-out"
         style={{
-          background: `radial-gradient(circle at 50% 50%, ${accent.hex}22 0%, rgba(10,10,12,0.6) 55%, #0a0a0c 100%)`
+          background: `radial-gradient(circle at 50% 50%, ${accent.hex}22 0%, rgba(10,10,12,0.65) 55%, #0a0a0c 100%)`
         }}
       />
 
-      {/* Atmospheric Concentric Rings matching user screenshot */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div 
-          className="w-[500px] h-[500px] sm:w-[700px] sm:h-[700px] md:w-[900px] md:h-[900px] rounded-full border border-neutral-800/40 opacity-40"
-        />
-        <div 
-          className="w-[350px] h-[350px] sm:w-[500px] sm:h-[500px] md:w-[650px] md:h-[650px] rounded-full border border-neutral-700/30 opacity-30 absolute"
-        />
-        <div 
-          className="w-[200px] h-[200px] sm:w-[300px] sm:h-[300px] md:w-[420px] md:h-[420px] rounded-full border border-neutral-700/20 opacity-20 absolute"
-        />
-      </div>
+      {/* Atmospheric Concentric Rings */}
+      {config.showRings !== false && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div 
+            className="w-[450px] h-[450px] sm:w-[650px] sm:h-[650px] md:w-[850px] md:h-[850px] rounded-full border border-neutral-800/40 opacity-40"
+          />
+          <div 
+            className="w-[300px] h-[300px] sm:w-[450px] sm:h-[450px] md:w-[600px] md:h-[600px] rounded-full border border-neutral-700/30 opacity-30 absolute"
+          />
+          <div 
+            className="w-[180px] h-[180px] sm:w-[260px] sm:h-[260px] md:w-[380px] md:h-[380px] rounded-full border border-neutral-700/20 opacity-20 absolute"
+          />
+        </div>
+      )}
 
       {/* Main Central Stage Display */}
-      <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-5xl z-10 space-y-4 sm:space-y-6">
-        {/* Church & District Headers (Inverted: Church First & Larger, District Second & Smaller) */}
+      <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-5xl z-10 space-y-3 sm:space-y-5">
+        {/* Church Image/Logo above Church Name */}
+        {config.logoUrl && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="flex items-center justify-center mb-1 max-w-full"
+          >
+            <img 
+              src={config.logoUrl} 
+              alt="Logo da Igreja" 
+              className="object-contain drop-shadow-[0_4px_24px_rgba(0,0,0,0.85)] max-w-full"
+              style={{
+                height: `${config.logoSize}px`,
+                maxHeight: `${config.logoSize}px`
+              }}
+            />
+          </motion.div>
+        )}
+
+        {/* Church & District Headers */}
         <motion.div 
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="space-y-1 sm:space-y-2"
+          className="space-y-1"
         >
-          {/* Igreja: Primeiro e Maior */}
-          <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]">
+          {/* Igreja: Nome com tamanho editável */}
+          <h1 
+            className="font-bold tracking-tight text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)] leading-tight"
+            style={{ fontSize: `${config.churchNameSize}px` }}
+          >
             {churchName}
           </h1>
 
-          {/* Distrito: Menor */}
-          <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-neutral-300 font-medium tracking-wide drop-shadow-md">
+          {/* Distrito: Tamanho editável */}
+          <p 
+            className="text-neutral-300 font-medium tracking-wide drop-shadow-md leading-normal"
+            style={{ fontSize: `${config.districtSize}px` }}
+          >
             {districtName}
           </p>
         </motion.div>
@@ -388,13 +680,14 @@ export function ChurchClockProjectionScreen({ churchName: initialChurch, distric
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.7, delay: 0.1, ease: "easeOut" }}
-          className="pt-4 sm:pt-8"
+          className="pt-2 sm:pt-4"
         >
           <span 
-            className="font-mono text-6xl sm:text-8xl md:text-9xl lg:text-[11rem] xl:text-[13rem] font-bold tracking-widest transition-colors duration-500 select-none block leading-none"
+            className="font-mono font-bold tracking-widest transition-colors duration-500 select-none block leading-none"
             style={{
+              fontSize: `${config.clockSize}px`,
               color: accent.hex,
-              filter: `drop-shadow(0 0 45px ${accent.hex}80) drop-shadow(0 0 90px ${accent.hex}40)`
+              filter: `drop-shadow(0 0 35px ${accent.hex}80) drop-shadow(0 0 70px ${accent.hex}40)`
             }}
           >
             {timeString || '12:00:00'}

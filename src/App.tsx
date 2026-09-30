@@ -58,6 +58,7 @@ import { AtmosphericBackground } from './components/AtmosphericBackground';
 import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected } from './utils/projectionSync';
 import { LiturgiaSidebar } from './components/LiturgiaSidebar';
 import { LiturgiaFloatingView } from './components/LiturgiaFloatingView';
+import { getChurchScreenConfig } from './components/SpecialProjections';
 
 // Error Boundary Component
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: any }> {
@@ -992,6 +993,21 @@ function AppContent() {
     setSelectedCollection(state.selectedCollection);
     setSelectedSong(state.selectedSong);
     setSelectedAlbum(state.selectedAlbum);
+
+    if (newView === 'song' && state.selectedSong) {
+      const songToProject = state.selectedSong;
+      try {
+        localStorage.setItem('projection_active_type', 'song');
+        localStorage.setItem('projection_active_song_id', songToProject.id);
+        localStorage.setItem('projection_current_song', JSON.stringify(songToProject));
+        localStorage.setItem('projection_current_index', '0');
+      } catch (e) {}
+      broadcastToProjection({
+        type: 'PROJECT_SONG',
+        song: songToProject,
+        index: 0
+      });
+    }
   };
 
   const albums = useMemo(() => {
@@ -1070,14 +1086,40 @@ function AppContent() {
     } else if (projectOnlySongId === 'church-clock-projection' || activeType === 'church-clock') {
       const churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
       const districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+      const churchConfig = getChurchScreenConfig();
       song = {
         id: 'church-clock-projection',
         collection_id: 'utilitarios',
         category: 'church-clock',
         title: churchName,
         lyrics: districtName,
-        author: JSON.stringify({ churchName, districtName })
+        author: JSON.stringify({ churchName, districtName, churchConfig })
       };
+    } else if (activeType === 'bible' || projectOnlySongId?.startsWith('bible-')) {
+      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const urlVerseText = urlParams?.get('verseText');
+      const urlVerseRef = urlParams?.get('verseRef');
+
+      if (urlVerseText && projectOnlySongId) {
+        song = {
+          id: projectOnlySongId,
+          collection_id: 'biblia',
+          category: 'Bíblia',
+          title: urlVerseRef || projectOnlySongId,
+          lyrics: urlVerseText,
+          author: urlVerseRef || projectOnlySongId
+        };
+      } else {
+        try {
+          const rawBible = localStorage.getItem('projection_bible_verse') || localStorage.getItem('projection_current_song');
+          if (rawBible) {
+            const parsed = JSON.parse(rawBible);
+            if (parsed && (parsed.id === projectOnlySongId || !projectOnlySongId || parsed.lyrics)) {
+              song = parsed;
+            }
+          }
+        } catch (e) {}
+      }
     } else if (activeType === 'song') {
       try {
         const raw = localStorage.getItem('projection_current_song');

@@ -152,6 +152,37 @@ export const POPULAR_VERSES: Record<string, string[]> = {
   ]
 };
 
+// Cache em memória da Bíblia completa para resolução instantânea
+let inMemoryBibleData: any[] | null = null;
+let isPreloadingBible = false;
+
+export async function preloadFullBible(): Promise<any[]> {
+  if (inMemoryBibleData && inMemoryBibleData.length > 0) return inMemoryBibleData;
+  if (isPreloadingBible) return [];
+  isPreloadingBible = true;
+  try {
+    const res = await fetch('/biblia/pt_ara.json');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        inMemoryBibleData = data;
+        return data;
+      }
+    }
+  } catch (e) {
+  } finally {
+    isPreloadingBible = false;
+  }
+  return [];
+}
+
+// Inicia pré-carregamento imediato no navegador
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    preloadFullBible().catch(() => {});
+  }, 100);
+}
+
 /**
  * Resolves a Bible Song object directly from a standard ID like "bible-Gn-1-4"
  */
@@ -163,14 +194,14 @@ export function resolveBibleSongFromId(id: string): Song | null {
     const cachedVerse = localStorage.getItem('projection_bible_verse');
     if (cachedVerse) {
       const parsed = JSON.parse(cachedVerse);
-      if (parsed && parsed.id === id && parsed.lyrics) {
+      if (parsed && (parsed.id === id || !id) && parsed.lyrics) {
         return parsed;
       }
     }
     const currentSong = localStorage.getItem('projection_current_song');
     if (currentSong) {
       const parsed = JSON.parse(currentSong);
-      if (parsed && parsed.id === id && parsed.lyrics) {
+      if (parsed && (parsed.id === id || parsed.category === 'Bíblia') && parsed.lyrics) {
         return parsed;
       }
     }
@@ -184,7 +215,8 @@ export function resolveBibleSongFromId(id: string): Song | null {
   const chapter = parseInt(parts[1], 10) || 1;
   const verse = parseInt(parts[2], 10) || 1;
 
-  const book = BIBLE_BOOKS.find(b => b.abbr.toLowerCase() === abbr.toLowerCase()) || {
+  const bookIdx = BIBLE_BOOKS.findIndex(b => b.abbr.toLowerCase() === abbr.toLowerCase());
+  const book = (bookIdx !== -1 ? BIBLE_BOOKS[bookIdx] : null) || {
     abbr,
     name: abbr === 'Gn' ? 'Gênesis' : abbr,
     testament: 'AT' as const,
@@ -194,10 +226,23 @@ export function resolveBibleSongFromId(id: string): Song | null {
 
   const key = `${book.abbr}-${chapter}`;
   let text = '';
-  if (POPULAR_VERSES[key] && POPULAR_VERSES[key][verse - 1]) {
+
+  // 1. Verifica se a Bíblia completa está no cache em memória
+  if (inMemoryBibleData && inMemoryBibleData.length > 0 && bookIdx !== -1) {
+    const targetBook = inMemoryBibleData[bookIdx];
+    if (targetBook?.chapters?.[chapter - 1]?.[verse - 1]) {
+      text = targetBook.chapters[chapter - 1][verse - 1];
+    }
+  }
+
+  // 2. Se não achou na Bíblia completa, tenta versículos populares rápidos
+  if (!text && POPULAR_VERSES[key] && POPULAR_VERSES[key][verse - 1]) {
     text = POPULAR_VERSES[key][verse - 1];
-  } else {
-    text = `E viu Deus que a luz era boa; e fez separação entre a luz e as trevas. (Versículo ${verse})`;
+  }
+
+  // 3. Dispara carregamento em background caso ainda não tenha carregado
+  if (!text && typeof window !== 'undefined') {
+    preloadFullBible().catch(() => {});
   }
 
   const ref = `${book.name.toUpperCase()} ${chapter}:${verse} (ARA)`;

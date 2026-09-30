@@ -4,6 +4,8 @@ import { Edit2, Check, X, Presentation } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { broadcastToProjection, openSecondaryProjectionWindow, isProjectionWindowOpen, closeProjectionWindow } from '../utils/projectionSync';
 import { Song } from '../types';
+import { getChurchScreenConfig } from './SpecialProjections';
+import { getChurchLogoFromDb } from '../utils/churchDb';
 
 export function HomeHero() {
   const { accent } = useTheme();
@@ -17,6 +19,9 @@ export function HomeHero() {
   });
   const [churchName, setChurchName] = useState(() => {
     return localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+  });
+  const [churchLogo, setChurchLogo] = useState(() => {
+    return getChurchScreenConfig().logoUrl || '';
   });
   const [isEditingChurch, setIsEditingChurch] = useState(false);
   const [tempDistrict, setTempDistrict] = useState(districtName);
@@ -38,17 +43,49 @@ export function HomeHero() {
     return () => clearInterval(interval);
   }, []);
 
+  // Listen to church logo config updates
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'church_screen_config' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setChurchLogo(parsed.logoUrl || '');
+        } catch (err) {}
+      }
+    };
+    const handleConfigChange = (e: any) => {
+      if (e.detail?.logoUrl !== undefined) {
+        setChurchLogo(e.detail.logoUrl);
+      } else {
+        setChurchLogo(getChurchScreenConfig().logoUrl || '');
+      }
+    };
+    // Hydrate from IndexedDB if not set
+    getChurchLogoFromDb().then(dbLogo => {
+      if (dbLogo) setChurchLogo(dbLogo);
+    }).catch(() => {});
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('church_config_changed', handleConfigChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('church_config_changed', handleConfigChange);
+    };
+  }, []);
+
   const handleSaveChurchInfo = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanDistrict = tempDistrict.trim() || 'Distrito de Cohab';
     const cleanChurch = tempChurch.trim() || 'Igreja Parque do Sol';
+    const fullConfig = getChurchScreenConfig();
     setDistrictName(cleanDistrict);
     setChurchName(cleanChurch);
     localStorage.setItem('church_district', cleanDistrict);
     localStorage.setItem('church_name', cleanChurch);
     localStorage.setItem('projection_church_data', JSON.stringify({
       churchName: cleanChurch,
-      districtName: cleanDistrict
+      districtName: cleanDistrict,
+      churchConfig: fullConfig
     }));
 
     broadcastToProjection({
@@ -59,8 +96,9 @@ export function HomeHero() {
         category: 'church-clock',
         title: cleanChurch,
         lyrics: cleanDistrict,
-        author: JSON.stringify({ churchName: cleanChurch, districtName: cleanDistrict })
-      }
+        author: JSON.stringify({ churchName: cleanChurch, districtName: cleanDistrict, churchConfig: fullConfig })
+      },
+      data: { churchConfig: fullConfig }
     });
 
     setIsEditingChurch(false);
@@ -87,26 +125,30 @@ export function HomeHero() {
       return;
     }
 
+    const fullConfig = getChurchScreenConfig();
     const payloadSong: Song = {
       id: 'church-clock-projection',
       collection_id: 'utilitarios',
       category: 'church-clock',
       title: churchName,
       lyrics: districtName,
-      author: JSON.stringify({ churchName, districtName })
+      author: JSON.stringify({ churchName, districtName, churchConfig: fullConfig })
     };
 
     try {
       localStorage.setItem('church_name', churchName);
       localStorage.setItem('church_district', districtName);
-      localStorage.setItem('projection_church_data', JSON.stringify({ churchName, districtName }));
+      localStorage.setItem('projection_active_type', 'church-clock');
+      localStorage.setItem('projection_active_song_id', 'church-clock-projection');
+      localStorage.setItem('projection_church_data', JSON.stringify({ churchName, districtName, churchConfig: fullConfig }));
       localStorage.setItem('projection_current_song', JSON.stringify(payloadSong));
     } catch (e) {}
 
     broadcastToProjection({
       type: 'PROJECT_SONG',
       song: payloadSong,
-      index: 0
+      index: 0,
+      data: { churchConfig: fullConfig }
     });
 
     await openSecondaryProjectionWindow(payloadSong);
@@ -136,6 +178,16 @@ export function HomeHero() {
             setIsEditingChurch(true);
           }}
         >
+          {churchLogo && (
+            <div className="flex items-center justify-center mb-3">
+              <img 
+                src={churchLogo} 
+                alt="Logo da Igreja" 
+                className="h-14 sm:h-18 object-contain drop-shadow-md max-w-[200px]" 
+              />
+            </div>
+          )}
+
           {/* Nome da Igreja Primeiro e Maior */}
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white flex items-center justify-center gap-3">
             {churchName}

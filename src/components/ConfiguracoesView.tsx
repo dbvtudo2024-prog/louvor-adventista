@@ -1,12 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sun, Moon, Palette, Layers, Sparkles, Monitor, Tv, 
   Smartphone, QrCode, Check, Copy, CheckCheck, Shield,
-  Keyboard, Settings2, Sliders, Volume2, Maximize2
+  Keyboard, Settings2, Sliders, Volume2, Maximize2,
+  Image as ImageIcon, Upload, Trash2, RotateCcw, Clock, Type, Play
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
+import { 
+  ChurchScreenConfig, 
+  DEFAULT_CHURCH_CONFIG, 
+  getChurchScreenConfig, 
+  saveChurchScreenConfig,
+  compressImageFile
+} from './SpecialProjections';
+import { 
+  saveChurchLogoToDb, 
+  deleteChurchLogoFromDb, 
+  getChurchLogoFromDb 
+} from '../utils/churchDb';
+import { broadcastToProjection, openSecondaryProjectionWindow } from '../utils/projectionSync';
 
 interface ConfiguracoesViewProps {
   onBackToHome?: () => void;
@@ -40,6 +54,147 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   const [screenResolution, setScreenResolution] = useState<'1080p' | '720p' | '4k'>('1080p');
   const [bgStyle, setBgStyle] = useState<'preto' | 'gradiente' | 'azul'>('preto');
   const [showClockOverlay, setShowClockOverlay] = useState(false);
+
+  // Tela da Igreja & Relógio (Customização de tamanhos e logo)
+  const [churchConfig, setChurchConfig] = useState<ChurchScreenConfig>(getChurchScreenConfig);
+  const churchLogoInputRef = useRef<HTMLInputElement>(null);
+  const [churchName, setChurchName] = useState(() => localStorage.getItem('church_name') || 'Igreja Parque do Sol');
+  const [districtName, setDistrictName] = useState(() => localStorage.getItem('church_district') || 'Distrito de Cohab');
+  const [previewTime, setPreviewTime] = useState('11:30:45');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      setPreviewTime(`${h}:${m}:${s}`);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+
+    // Hydrate logo from IndexedDB if not present in initial localStorage state
+    getChurchLogoFromDb().then((dbLogo) => {
+      if (dbLogo) {
+        setChurchConfig(prev => {
+          if (!prev.logoUrl || prev.logoUrl !== dbLogo) {
+            return { ...prev, logoUrl: dbLogo };
+          }
+          return prev;
+        });
+      }
+    }).catch(() => {});
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUpdateChurchConfig = (partial: Partial<ChurchScreenConfig>) => {
+    const updated = saveChurchScreenConfig(partial);
+    setChurchConfig(updated);
+  };
+
+  const handleChurchNameChange = (val: string) => {
+    setChurchName(val);
+    localStorage.setItem('church_name', val);
+    localStorage.setItem('projection_church_data', JSON.stringify({
+      churchName: val,
+      districtName,
+      churchConfig
+    }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'church_name', newValue: val }));
+  };
+
+  const handleDistrictNameChange = (val: string) => {
+    setDistrictName(val);
+    localStorage.setItem('church_district', val);
+    localStorage.setItem('projection_church_data', JSON.stringify({
+      churchName,
+      districtName: val,
+      churchConfig
+    }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'church_district', newValue: val }));
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Compress client-side to ensure razor-sharp image while staying well within browser quotas
+      const compressed = await compressImageFile(file, 640, 0.9);
+      if (compressed) {
+        handleUpdateChurchConfig({ logoUrl: compressed });
+        await saveChurchLogoToDb(compressed);
+        return;
+      }
+    } catch (err) {
+      console.warn('Erro ao comprimir imagem, usando fallback:', err);
+    }
+
+    // Fallback if canvas compression fails
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (typeof reader.result === 'string') {
+        handleUpdateChurchConfig({ logoUrl: reader.result });
+        await saveChurchLogoToDb(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = async () => {
+    handleUpdateChurchConfig({ logoUrl: '' });
+    await deleteChurchLogoFromDb();
+    if (churchLogoInputRef.current) {
+      churchLogoInputRef.current.value = '';
+    }
+  };
+
+  const handleResetSizes = () => {
+    handleUpdateChurchConfig({
+      logoSize: DEFAULT_CHURCH_CONFIG.logoSize,
+      churchNameSize: DEFAULT_CHURCH_CONFIG.churchNameSize,
+      districtSize: DEFAULT_CHURCH_CONFIG.districtSize,
+      clockSize: DEFAULT_CHURCH_CONFIG.clockSize,
+      showRings: DEFAULT_CHURCH_CONFIG.showRings,
+    });
+  };
+
+  const handleProjectChurchScreen = () => {
+    const fullConfig = { ...churchConfig, ...getChurchScreenConfig() };
+    const payloadSong = {
+      id: 'church-clock-projection',
+      collection_id: 'utilitarios',
+      category: 'church-clock',
+      title: churchName,
+      lyrics: districtName,
+      author: JSON.stringify({ 
+        churchName, 
+        districtName,
+        churchConfig: fullConfig 
+      })
+    };
+    try {
+      localStorage.setItem('church_name', churchName);
+      localStorage.setItem('church_district', districtName);
+      localStorage.setItem('projection_active_type', 'church-clock');
+      localStorage.setItem('projection_active_song_id', 'church-clock-projection');
+      localStorage.setItem('projection_church_data', JSON.stringify({ 
+        churchName, 
+        districtName, 
+        churchConfig: fullConfig 
+      }));
+      localStorage.setItem('projection_current_song', JSON.stringify(payloadSong));
+    } catch (e) {}
+
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: payloadSong as any,
+      index: 0,
+      data: { churchConfig: fullConfig }
+    });
+    openSecondaryProjectionWindow(payloadSong as any);
+  };
 
   // Remoto state
   const [copiedLink, setCopiedLink] = useState(false);
@@ -512,6 +667,294 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                   <option value="gradiente">Gradiente Noturno Litúrgico</option>
                   <option value="azul">Azul Profundo de Oração</option>
                 </select>
+              </div>
+            </div>
+          </div>
+
+          {/* SEÇÃO DA TELA DE ESPERA DA IGREJA & RELÓGIO (IMAGEM 1) */}
+          <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Tv className="w-5 h-5" style={{ color: accent.hex }} />
+                  Tela da Igreja & Relógio (Espera / Telão)
+                </h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Ajuste o tamanho de cada elemento e adicione uma imagem ou logo acima do nome da igreja.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetSizes}
+                  className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Restaurar tamanhos originais recomendados"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Redefinir</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProjectChurchScreen}
+                  className="px-3 py-1.5 font-bold text-neutral-950 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:brightness-110 active:scale-95"
+                  style={{ backgroundColor: accent.hex }}
+                  title="Projetar esta tela agora no telão"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Projetar Agora</span>
+                </button>
+              </div>
+            </div>
+
+            {/* IDENTIFICAÇÃO DE TEXTOS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                  Nome da Igreja Local
+                </label>
+                <input
+                  type="text"
+                  value={churchName}
+                  onChange={(e) => handleChurchNameChange(e.target.value)}
+                  placeholder="Ex: Igreja Parque do Sol"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-neutral-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                  Distrito ou Região
+                </label>
+                <input
+                  type="text"
+                  value={districtName}
+                  onChange={(e) => handleDistrictNameChange(e.target.value)}
+                  placeholder="Ex: Distrito de Cohab"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-neutral-600"
+                />
+              </div>
+            </div>
+
+            {/* IMAGEM / LOGOTIPO ACIMA DO NOME DA IGREJA */}
+            <div className="p-4 bg-neutral-900/90 rounded-xl border border-neutral-800 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-white flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" style={{ color: accent.hex }} />
+                    <span>Imagem / Logotipo Acima do Nome da Igreja</span>
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Adicione o brasão da IASD, logotipo da igreja local ou imagem personalizada.
+                  </p>
+                </div>
+
+                <input 
+                  type="file" 
+                  ref={churchLogoInputRef} 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  className="hidden" 
+                />
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => churchLogoInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{churchConfig.logoUrl ? 'Trocar Imagem' : 'Adicionar Imagem'}</span>
+                  </button>
+
+                  {churchConfig.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs transition-colors cursor-pointer"
+                      title="Remover imagem"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Slider de tamanho da imagem (se houver imagem) */}
+              {churchConfig.logoUrl && (
+                <div className="pt-2 border-t border-neutral-800/80 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-400 font-medium">Tamanho da Imagem / Logo:</span>
+                    <span className="font-mono text-white font-bold">{churchConfig.logoSize}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="40"
+                    max="240"
+                    step="4"
+                    value={churchConfig.logoSize}
+                    onChange={(e) => handleUpdateChurchConfig({ logoSize: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-lg cursor-pointer"
+                    style={{ accentColor: accent.hex }}
+                  />
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                    <span>40px (Pequena)</span>
+                    <span>100px (Padrão)</span>
+                    <span>240px (Grande)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* CONTROLES DE TAMANHO DE CADA ITEM */}
+            <div className="space-y-3">
+              <p className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                Ajuste de Escala dos Itens (Resolução do Projetor)
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Nome da Igreja */}
+                <div className="p-3.5 bg-neutral-900 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-300 font-semibold flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-neutral-400" />
+                      Nome da Igreja
+                    </span>
+                    <span className="font-mono text-white font-bold">{churchConfig.churchNameSize}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="24"
+                    max="92"
+                    step="2"
+                    value={churchConfig.churchNameSize}
+                    onChange={(e) => handleUpdateChurchConfig({ churchNameSize: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-lg cursor-pointer"
+                    style={{ accentColor: accent.hex }}
+                  />
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                    <span>24px</span>
+                    <span>52px (Padrão)</span>
+                    <span>92px</span>
+                  </div>
+                </div>
+
+                {/* 2. Distrito */}
+                <div className="p-3.5 bg-neutral-900 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-300 font-semibold flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-neutral-400" />
+                      Distrito / Região
+                    </span>
+                    <span className="font-mono text-white font-bold">{churchConfig.districtSize}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="14"
+                    max="44"
+                    step="1"
+                    value={churchConfig.districtSize}
+                    onChange={(e) => handleUpdateChurchConfig({ districtSize: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-lg cursor-pointer"
+                    style={{ accentColor: accent.hex }}
+                  />
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                    <span>14px</span>
+                    <span>22px (Padrão)</span>
+                    <span>44px</span>
+                  </div>
+                </div>
+
+                {/* 3. Relógio Digital */}
+                <div className="p-3.5 bg-neutral-900 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-300 font-semibold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                      Relógio Digital
+                    </span>
+                    <span className="font-mono text-white font-bold">{churchConfig.clockSize}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="48"
+                    max="180"
+                    step="4"
+                    value={churchConfig.clockSize}
+                    onChange={(e) => handleUpdateChurchConfig({ clockSize: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-lg cursor-pointer"
+                    style={{ accentColor: accent.hex }}
+                  />
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                    <span>48px</span>
+                    <span>105px (Padrão)</span>
+                    <span>180px</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PRÉVIA EM TEMPO REAL */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider block">
+                Prévia da Projeção no Telão (Tempo Real)
+              </span>
+              <div 
+                className="w-full h-56 sm:h-64 rounded-2xl border border-neutral-800 bg-[#0a0a0c] relative overflow-hidden flex flex-col items-center justify-center p-4 select-none shadow-2xl"
+              >
+                {/* Radial ambient glow */}
+                <div 
+                  className="absolute inset-0 pointer-events-none opacity-40"
+                  style={{
+                    background: `radial-gradient(circle at 50% 50%, ${accent.hex}30 0%, transparent 70%)`
+                  }}
+                />
+
+                {/* Subtle rings in preview */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+                  <div className="w-48 h-48 rounded-full border border-neutral-800" />
+                  <div className="w-32 h-32 rounded-full border border-neutral-700/40 absolute" />
+                </div>
+
+                <div className="relative z-10 flex flex-col items-center text-center max-w-full space-y-2">
+                  {churchConfig.logoUrl && (
+                    <img 
+                      src={churchConfig.logoUrl} 
+                      alt="Logo" 
+                      className="object-contain drop-shadow-md"
+                      style={{
+                        height: `${Math.round(churchConfig.logoSize * 0.42)}px`,
+                        maxHeight: '65px'
+                      }}
+                    />
+                  )}
+
+                  <div className="space-y-0.5">
+                    <p 
+                      className="font-bold text-white tracking-tight leading-tight drop-shadow-md truncate max-w-md"
+                      style={{ fontSize: `${Math.max(16, Math.round(churchConfig.churchNameSize * 0.45))}px` }}
+                    >
+                      {churchName}
+                    </p>
+                    <p 
+                      className="text-neutral-400 font-medium tracking-wide truncate max-w-md"
+                      style={{ fontSize: `${Math.max(11, Math.round(churchConfig.districtSize * 0.55))}px` }}
+                    >
+                      {districtName}
+                    </p>
+                  </div>
+
+                  <div className="pt-1">
+                    <span 
+                      className="font-mono font-bold tracking-widest leading-none block select-none"
+                      style={{
+                        fontSize: `${Math.max(22, Math.round(churchConfig.clockSize * 0.4))}px`,
+                        color: accent.hex,
+                        filter: `drop-shadow(0 0 15px ${accent.hex}70)`
+                      }}
+                    >
+                      {previewTime}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

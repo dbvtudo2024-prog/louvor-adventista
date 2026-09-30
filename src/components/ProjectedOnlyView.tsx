@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Maximize2, Minimize2 } from 'lucide-react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
-import { BibleProjectionScreen, SorteioProjectionScreen, ChurchClockProjectionScreen } from './SpecialProjections';
+import { BibleProjectionScreen, SorteioProjectionScreen, ChurchClockProjectionScreen, ChurchScreenConfig } from './SpecialProjections';
 import { AtmosphericBackground } from './AtmosphericBackground';
 import { subscribeToProjection, broadcastToProjection, ProjectionMessage } from '../utils/projectionSync';
 import { getSupabase } from '../lib/supabase';
@@ -20,6 +19,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>('serif');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [churchLiveConfig, setChurchLiveConfig] = useState<ChurchScreenConfig | null>(null);
   const wakeLockRef = useRef<any>(null);
   const mountedAtRef = useRef<number>(Date.now());
   
@@ -69,45 +69,93 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).mozFullScreenElement || (document as any).msFullscreenElement));
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const shouldFullscreen = urlParams.get('fullscreen') === 'true' || urlParams.get('project') === 'true';
-
-    if (shouldFullscreen) {
-      const enterFs = () => {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(() => {});
+    const enterFs = () => {
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).mozFullScreenElement || (document as any).msFullscreenElement) {
+        return;
+      }
+      const el = document.documentElement as any;
+      const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (rfs) {
+        try {
+          const p = rfs.call(el, { navigationUI: 'hide' });
+          if (p && typeof p.then === 'function') {
+            p.catch(() => {
+              try { el.requestFullscreen?.().catch?.(() => {}); } catch (e) {}
+            });
+          }
+        } catch (e) {
+          try { el.requestFullscreen?.().catch?.(() => {}); } catch (e2) {}
         }
-      };
+      }
+    };
 
+    // Immediate attempt on activation/mount
+    enterFs();
+    const t1 = setTimeout(enterFs, 50);
+    const t2 = setTimeout(enterFs, 200);
+    const t3 = setTimeout(enterFs, 600);
+
+    // Browser security may require a user gesture in the window.
+    // By capturing user gestures (click, pointer, touch, keys, mousemove, focus),
+    // any initial user action immediately completes the fullscreen request.
+    const handleUserGesture = () => {
       enterFs();
-      window.addEventListener('click', enterFs);
-      window.addEventListener('keydown', enterFs);
-      window.addEventListener('focus', enterFs);
-      window.addEventListener('pointerdown', enterFs);
+    };
 
-      return () => {
-        document.removeEventListener('fullscreenchange', handleFullscreenChange);
-        window.removeEventListener('click', enterFs);
-        window.removeEventListener('keydown', enterFs);
-        window.removeEventListener('focus', enterFs);
-        window.removeEventListener('pointerdown', enterFs);
-      };
-    }
+    window.addEventListener('click', handleUserGesture, true);
+    window.addEventListener('pointerdown', handleUserGesture, true);
+    window.addEventListener('touchstart', handleUserGesture, true);
+    window.addEventListener('focus', handleUserGesture, true);
+    window.addEventListener('mousemove', handleUserGesture, { once: true, passive: true });
 
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'F11' || e.key.toLowerCase() === 'f' || e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        enterFs();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      window.removeEventListener('click', handleUserGesture, true);
+      window.removeEventListener('pointerdown', handleUserGesture, true);
+      window.removeEventListener('touchstart', handleUserGesture, true);
+      window.removeEventListener('focus', handleUserGesture, true);
+      window.removeEventListener('mousemove', handleUserGesture);
+      window.removeEventListener('keydown', handleKey, true);
+    };
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-      });
+    const isFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).mozFullScreenElement || (document as any).msFullscreenElement);
+    if (!isFs) {
+      const el = document.documentElement as any;
+      const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (rfs) {
+        try {
+          rfs.call(el, { navigationUI: 'hide' })?.catch?.(() => {});
+        } catch (e) {
+          try { el.requestFullscreen?.().catch?.(() => {}); } catch (e2) {}
+        }
+      }
     } else {
-      document.exitFullscreen().catch(() => {});
+      const efs = document.exitFullscreen || (document as any).webkitExitFullscreen || (document as any).mozCancelFullScreen || (document as any).msExitFullscreen;
+      if (efs) {
+        try {
+          efs.call(document)?.catch?.(() => {});
+        } catch (e) {}
+      }
     }
   };
 
@@ -170,23 +218,24 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     return song.category === 'Bíblia' || song.collection_id === 'biblia' || song.id?.startsWith('bible-');
   }, [song]);
 
-  // Se a janela abriu para sorteio (songId=sorteio-projection), ela sempre prioriza o sorteio
+  // Utilitários só são ativos se NÃO houver música real ou versículo bíblico ativo
   const isSorteio = useMemo(() => {
-    if (isSorteioParam) return true;
+    if (isRealSong || isBible) return false;
     if (song?.id === 'sorteio-projection' || song?.category === 'sorteio' || (song?.collection_id === 'utilitarios' && song?.title === 'Sorteio')) {
       return true;
     }
+    if (!song && isSorteioParam) return true;
     return false;
-  }, [song, isSorteioParam]);
+  }, [isRealSong, isBible, song, isSorteioParam]);
 
   const isChurchClock = useMemo(() => {
-    if (isSorteio) return false;
-    if (isChurchClockParam) return true;
+    if (isRealSong || isBible || isSorteio) return false;
     if (song?.id === 'church-clock-projection' || song?.category === 'church-clock' || (song?.collection_id === 'utilitarios' && song?.title?.includes('Igreja'))) {
       return true;
     }
+    if (!song && isChurchClockParam) return true;
     return false;
-  }, [isSorteio, song, isChurchClockParam]);
+  }, [isRealSong, isBible, isSorteio, song, isChurchClockParam]);
 
   const [sorteioLive, setSorteioLive] = useState<{ winner: string; winners: any[] }>(() => {
     try {
@@ -251,9 +300,32 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
     // 0. Immediate Bible verse resolution if target is Bible
     if (targetSongId && targetSongId.startsWith('bible-')) {
-      const resolvedVerse = resolveBibleSongFromId(targetSongId);
-      if (resolvedVerse) {
-        setSong(resolvedVerse);
+      const urlVerseText = urlParams.get('verseText');
+      const urlVerseRef = urlParams.get('verseRef');
+      if (urlVerseText) {
+        setSong({
+          id: targetSongId,
+          collection_id: 'biblia',
+          category: 'Bíblia',
+          title: urlVerseRef || targetSongId,
+          lyrics: urlVerseText,
+          author: urlVerseRef || targetSongId
+        });
+      } else {
+        try {
+          const cachedBible = localStorage.getItem('projection_bible_verse') || localStorage.getItem('projection_current_song');
+          if (cachedBible) {
+            const parsedBible: Song = JSON.parse(cachedBible);
+            if (parsedBible && parsedBible.lyrics && (parsedBible.id === targetSongId || parsedBible.title)) {
+              setSong(parsedBible);
+            }
+          }
+        } catch (e) {}
+
+        const resolvedVerse = resolveBibleSongFromId(targetSongId);
+        if (resolvedVerse) {
+          setSong(prev => (prev && prev.lyrics ? prev : resolvedVerse));
+        }
       }
     }
 
@@ -438,6 +510,21 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             });
           }
         }
+        if (msg.data?.churchConfig) {
+          setChurchLiveConfig(prev => ({ ...(prev || {}), ...msg.data.churchConfig }));
+        }
+        if (msg.song?.id === 'church-clock-projection' && msg.song.author && msg.song.author.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(msg.song.author);
+            if (parsed.churchConfig) {
+              setChurchLiveConfig(prev => ({ ...(prev || {}), ...parsed.churchConfig }));
+            }
+          } catch (e) {}
+        }
+      } else if ((msg.type as any) === 'CHURCH_CONFIG_UPDATED' || msg.data?.churchConfig) {
+        if (msg.data?.churchConfig) {
+          setChurchLiveConfig(prev => ({ ...(prev || {}), ...msg.data.churchConfig }));
+        }
       } else if (msg.type === 'SORTEIO_UPDATE') {
         if (msg.data) {
           const finalWinner = String(msg.data.winner ?? '?');
@@ -578,61 +665,43 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
   if (!song || (!isSorteio && !song.lyrics && !song.title)) {
     return (
-      <div className="fixed inset-0 bg-[#0b0d12] flex items-center justify-center select-none overflow-hidden group">
-        {/* Tela secundária com apenas o fundo dinâmico e 100% vazia */}
+      <div 
+        onClick={toggleFullscreen}
+        onDoubleClick={toggleFullscreen}
+        className="fixed inset-0 bg-[#0b0d12] flex items-center justify-center select-none overflow-hidden cursor-pointer"
+      >
+        {/* Tela de projeção limpa com apenas o fundo dinâmico e sem nenhum botão */}
         <AtmosphericBackground />
-
-        {/* Botão de Tela Cheia sutil ao passar o mouse */}
-        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-          <button 
-            onClick={toggleFullscreen}
-            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/70 hover:text-white transition-all backdrop-blur-md border border-white/10 shadow-lg"
-            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
-          >
-            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
-          </button>
-        </div>
       </div>
     );
   }
 
-
   if (isBible) {
     return (
-      <div className="fixed inset-0 bg-[#0b0d14] flex flex-col justify-between overflow-hidden group">
+      <div 
+        onClick={toggleFullscreen}
+        onDoubleClick={toggleFullscreen}
+        className="fixed inset-0 bg-[#0b0d14] flex flex-col justify-between overflow-hidden cursor-pointer"
+      >
         <BibleProjectionScreen 
           verseText={song.lyrics} 
           reference={song.title || song.author || ''} 
         />
-        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-          <button 
-            onClick={toggleFullscreen}
-            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
-          >
-            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
-          </button>
-        </div>
       </div>
     );
   }
 
   if (isSorteio) {
     return (
-      <div className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden group">
+      <div 
+        onClick={toggleFullscreen}
+        onDoubleClick={toggleFullscreen}
+        className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
+      >
         <SorteioProjectionScreen 
           winner={sorteioData.winner} 
           winnersList={sorteioData.winners} 
         />
-        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-          <button 
-            onClick={toggleFullscreen}
-            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
-          >
-            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
-          </button>
-        </div>
       </div>
     );
   }
@@ -640,48 +709,50 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   if (isChurchClock) {
     let churchName = song?.title || 'Igreja Parque do Sol';
     let districtName = song?.lyrics || 'Distrito de Cohab';
+    let churchConfig: ChurchScreenConfig | undefined = undefined;
+
+    if (song?.author && song.author.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(song.author);
+        if (parsed.churchName) churchName = parsed.churchName;
+        if (parsed.districtName) districtName = parsed.districtName;
+        if (parsed.churchConfig) churchConfig = parsed.churchConfig;
+      } catch (e) {}
+    }
+
     try {
       const raw = localStorage.getItem('projection_church_data');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.churchName) churchName = parsed.churchName;
         if (parsed.districtName) districtName = parsed.districtName;
+        if (parsed.churchConfig && !churchConfig) churchConfig = parsed.churchConfig;
       }
     } catch (e) {}
 
+    const resolvedConfig = churchLiveConfig || churchConfig;
+
     return (
-      <div className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden group">
+      <div 
+        onClick={toggleFullscreen}
+        onDoubleClick={toggleFullscreen}
+        className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
+      >
         <ChurchClockProjectionScreen 
           churchName={churchName} 
           districtName={districtName} 
+          config={resolvedConfig}
         />
-        {!isFullscreen && (
-          <div className="absolute top-4 right-4 z-50">
-            <button 
-              onClick={toggleFullscreen}
-              className="px-3.5 py-1.5 rounded-full bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-medium transition-all cursor-pointer group hover:scale-105 active:scale-95"
-              title="Expandir em Tela Cheia no Telão"
-            >
-              <Maximize2 className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
-              <span>Tela Cheia</span>
-            </button>
-          </div>
-        )}
-        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-          <button 
-            onClick={toggleFullscreen}
-            className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-            title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
-          >
-            {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
-          </button>
-        </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden group">
+    <div 
+      onClick={toggleFullscreen}
+      onDoubleClick={toggleFullscreen}
+      className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden cursor-pointer"
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={currentPhraseIndex}
@@ -734,31 +805,6 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           <span>Tela de Retorno (Palco)</span>
         </div>
       )}
-
-      {/* Top right prompt if not in fullscreen yet */}
-      {!isFullscreen && (
-        <div className="absolute top-4 right-4 z-50">
-          <button 
-            onClick={toggleFullscreen}
-            className="px-3.5 py-1.5 rounded-full bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-medium transition-all cursor-pointer group hover:scale-105 active:scale-95"
-            title="Expandir em Tela Cheia no Telão"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
-            <span>Tela Cheia</span>
-          </button>
-        </div>
-      )}
-
-      {/* Fullscreen Toggle Button - Visible on hover */}
-      <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button 
-          onClick={toggleFullscreen}
-          className="p-4 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-          title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
-        >
-          {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
-        </button>
-      </div>
     </div>
   );
 }

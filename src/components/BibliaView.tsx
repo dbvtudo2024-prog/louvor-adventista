@@ -413,12 +413,19 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
     ];
   }, [selectedBook, selectedChapter, customBibleData, bibleData, isLoadingBible]);
 
-  // Filter verses
+  // Filter verses keeping accurate originalIndex and verseNum
   const displayedVerses = useMemo(() => {
-    if (!verseSearchQuery.trim()) return rawVerses;
-    return rawVerses.filter((v, idx) => 
-      v.toLowerCase().includes(verseSearchQuery.toLowerCase()) || 
-      String(idx + 1).includes(verseSearchQuery)
+    const list = rawVerses.map((text, originalIndex) => ({
+      text,
+      originalIndex,
+      verseNum: originalIndex + 1
+    }));
+    if (!verseSearchQuery.trim()) return list;
+    const query = verseSearchQuery.toLowerCase().trim();
+    return list.filter(item => 
+      item.text.toLowerCase().includes(query) || 
+      String(item.verseNum) === query ||
+      String(item.verseNum).includes(query)
     );
   }, [rawVerses, verseSearchQuery]);
 
@@ -578,7 +585,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Circular emblem button matching dynamic theme */}
           <button 
-            onClick={() => handleProjectSelected(selectedVerseIndex)}
+            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0)}
             className="w-8 h-8 rounded-full text-neutral-950 flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0 hover:brightness-110 cursor-pointer"
             style={{ backgroundColor: accent.hex }}
             title="Projetar versículo selecionado"
@@ -600,7 +607,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
 
           {/* Pill Button: Navegar em versículos */}
           <button
-            onClick={() => handleProjectSelected(selectedVerseIndex)}
+            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0)}
             className="px-3.5 py-1.5 bg-[#1b1c20] hover:bg-neutral-800 border border-neutral-700/80 rounded-full text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-sm shrink-0"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: accent.hex }} />
@@ -857,9 +864,9 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
 
           {/* Verses List matching image.png & image 4 (Scrolls internally without outer scrollbar) */}
           <div ref={versesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-2 pt-2 space-y-2 pb-44">
-            {displayedVerses.map((verseText, idx) => {
-              const verseNum = idx + 1;
-              const isSelected = selectedVerseIndex === idx;
+            {displayedVerses.map((item) => {
+              const verseNum = item.verseNum;
+              const isSelected = selectedVerseIndex === item.originalIndex;
 
               return (
                 <div
@@ -867,13 +874,13 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
                   onClick={() => {
                     if (isBibleProjecting) {
                       // Estando projetado, ao selecionar outro verso, substitui imediatamente na tela de projeção
-                      setSelectedVerseIndex(idx);
-                      handleProjectSelected(idx);
+                      setSelectedVerseIndex(item.originalIndex);
+                      handleProjectSelected(item.originalIndex);
                     } else {
-                      setSelectedVerseIndex(isSelected ? null : idx);
+                      setSelectedVerseIndex(isSelected ? null : item.originalIndex);
                     }
                   }}
-                  onDoubleClick={() => handleProjectSelected(idx)}
+                  onDoubleClick={() => handleProjectSelected(item.originalIndex)}
                   className={`flex items-start gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all border-l-4 ${
                     isSelected
                       ? 'text-white font-medium shadow-md border'
@@ -894,7 +901,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
                     {verseNum}
                   </span>
                   <p className="text-xs sm:text-[13.5px] leading-relaxed flex-1 select-text">
-                    {verseText}
+                    {item.text}
                   </p>
                 </div>
               );
