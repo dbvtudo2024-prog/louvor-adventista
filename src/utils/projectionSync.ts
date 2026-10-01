@@ -93,6 +93,18 @@ export function broadcastToProjection(message: ProjectionMessage): void {
       }
     }
 
+    if (message.data?.logoUrl) {
+      localStorage.setItem('church_logo_url', message.data.logoUrl);
+    }
+    if (message.data?.churchConfig) {
+      try {
+        localStorage.setItem('church_screen_config', JSON.stringify(message.data.churchConfig));
+        if (message.data.churchConfig.logoUrl) {
+          localStorage.setItem('church_logo_url', message.data.churchConfig.logoUrl);
+        }
+      } catch (e) {}
+    }
+
     if (message.song) {
       localStorage.setItem('projection_current_song', JSON.stringify(message.song));
       if (message.song.id === 'sorteio-projection' || message.song.category === 'sorteio') {
@@ -237,6 +249,14 @@ export interface SecondaryScreenInfo {
 }
 
 /**
+ * Checks if the current client is on a mobile device / smartphone screen
+ */
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+/**
  * Detects if a secondary screen is connected and retrieves its coordinates.
  */
 export async function detectSecondaryScreen(): Promise<SecondaryScreenInfo> {
@@ -245,11 +265,20 @@ export async function detectSecondaryScreen(): Promise<SecondaryScreenInfo> {
   }
 
   // 1. Modern Multi-Screen Window Management API (Chrome 100+ / Edge)
-  const getScreenDetailsFn = (window as any).getScreenDetails || (navigator as any)?.windowManagement?.getScreenDetails;
+  const win = window as any;
+  const nav = navigator as any;
+  const getScreenDetailsFn = win.getScreenDetails || nav?.windowManagement?.getScreenDetails;
+
   if (typeof getScreenDetailsFn === 'function') {
     try {
+      if (nav.permissions?.query) {
+        try {
+          await nav.permissions.query({ name: 'window-management' as any });
+        } catch (e) {}
+      }
+
       const screenDetails = await getScreenDetailsFn.call(
-        (window as any).getScreenDetails ? window : (navigator as any).windowManagement
+        win.getScreenDetails ? win : nav.windowManagement
       );
       if (screenDetails?.screens?.length > 1) {
         const current = screenDetails.currentScreen;
@@ -295,7 +324,7 @@ export async function detectSecondaryScreen(): Promise<SecondaryScreenInfo> {
   if ((window.screen as any)?.availLeft && (window.screen as any).availLeft !== 0) {
     return {
       hasSecondary: true,
-      left: 0,
+      left: (window.screen as any).availLeft,
       top: 0,
       width: window.screen.availWidth ?? 1920,
       height: window.screen.availHeight ?? 1080
@@ -362,20 +391,25 @@ export function closeProjectionWindow(): boolean {
 /**
  * Toggles the projection window: if already open, closes it; otherwise opens it.
  */
-export async function toggleSecondaryProjectionWindow(songOrId?: string | Song): Promise<boolean> {
+export async function toggleSecondaryProjectionWindow(songOrId?: string | Song, forceOpen = false): Promise<boolean> {
   if (isProjectionWindowOpen()) {
     closeProjectionWindow();
     return false; // Closed
   } else {
-    await openSecondaryProjectionWindow(songOrId);
+    await openSecondaryProjectionWindow(songOrId, false, forceOpen);
     return true; // Opened
   }
 }
 
 /**
  * Opens projection window on secondary monitor if available, otherwise on extended screen or current.
+ * Keeps operator screen in command and never kicks mobile user out of app.
  */
-export async function openSecondaryProjectionWindow(songOrId?: string | Song, isRetorno = false): Promise<Window | null> {
+export async function openSecondaryProjectionWindow(
+  songOrId?: string | Song, 
+  isRetorno = false,
+  forceOpen = false
+): Promise<Window | null> {
   const songId = typeof songOrId === 'string' ? songOrId : songOrId?.id;
   const songObj = typeof songOrId === 'object' ? songOrId : null;
 
@@ -407,6 +441,33 @@ export async function openSecondaryProjectionWindow(songOrId?: string | Song, is
     });
   }
 
+  // Reuse existing window if still open (do not reload or steal focus to preserve fullscreen state)
+  if (activeProjectionWin && !activeProjectionWin.closed) {
+    try {
+      if (songObj) {
+        let payloadData: any = undefined;
+        if (songObj.id === 'church-clock-projection' && songObj.author?.startsWith('{')) {
+          try {
+            payloadData = JSON.parse(songObj.author);
+          } catch (e) {}
+        }
+        broadcastToProjection({
+          type: 'PROJECT_SONG',
+          song: songObj,
+          index: 0,
+          data: payloadData
+        });
+      }
+      return activeProjectionWin;
+    } catch (e) {}
+  }
+
+  // Em celular (formato de celular), o aparelho funciona como mesa de controle/remoto.
+  // Não abre popup para não tirar o operador da tela do programa, a menos que forceOpen seja true.
+  if (isMobileDevice() && !forceOpen) {
+    return null;
+  }
+
   const screenInfo = await detectSecondaryScreen();
   const left = screenInfo.left;
   const top = screenInfo.top;
@@ -424,32 +485,20 @@ export async function openSecondaryProjectionWindow(songOrId?: string | Song, is
   }
   const features = `left=${left},top=${top},screenX=${left},screenY=${top},width=${width},height=${height},menubar=no,status=no,toolbar=no,location=no,scrollbars=no,resizable=yes,popup=yes,fullscreen=yes`;
 
-  // Reuse existing window if still open (do not reload or steal focus to preserve fullscreen state)
-  if (activeProjectionWin && !activeProjectionWin.closed) {
-    try {
-      if (songObj) {
-        broadcastToProjection({
-          type: 'PROJECT_SONG',
-          song: songObj,
-          index: 0
-        });
-      }
-      return activeProjectionWin;
-    } catch (e) {}
-  }
-
   const win = window.open(url, isRetorno ? 'louvor_adventista_return_screen' : 'louvor_adventista_projection_screen', features);
   if (!isRetorno) {
     activeProjectionWin = win;
   }
 
-  if (win) {
-    try {
-      win.focus();
-    } catch (e) {}
-  }
+  // Não rouba foco do operador: mantém o operador no controle da tela
+  try {
+    if (win) {
+      win.blur();
+      window.focus();
+    }
+  } catch (e) {}
 
-  if (win) {
+  if (win && screenInfo.hasSecondary) {
     try {
       win.moveTo(left, top);
       win.resizeTo(width, height);

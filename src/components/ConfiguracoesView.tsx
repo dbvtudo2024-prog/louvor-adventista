@@ -91,6 +91,43 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   const handleUpdateChurchConfig = (partial: Partial<ChurchScreenConfig>) => {
     const updated = saveChurchScreenConfig(partial);
     setChurchConfig(updated);
+
+    const effectiveLogo = updated.logoUrl !== undefined ? updated.logoUrl : (churchConfig.logoUrl || localStorage.getItem('church_logo_url') || '');
+    const fullConfig: ChurchScreenConfig = {
+      ...updated,
+      logoUrl: effectiveLogo
+    };
+
+    try {
+      localStorage.setItem('projection_church_data', JSON.stringify({
+        churchName,
+        districtName,
+        churchConfig: fullConfig
+      }));
+      if (effectiveLogo) {
+        localStorage.setItem('church_logo_url', effectiveLogo);
+      }
+    } catch (e) {}
+
+    const payloadSong = {
+      id: 'church-clock-projection',
+      collection_id: 'utilitarios',
+      category: 'church-clock',
+      title: churchName,
+      lyrics: districtName,
+      author: JSON.stringify({ 
+        churchName, 
+        districtName, 
+        churchConfig: fullConfig 
+      })
+    };
+
+    broadcastToProjection({
+      type: 'PROJECT_SONG',
+      song: payloadSong as any,
+      index: 0,
+      data: { churchConfig: fullConfig, logoUrl: effectiveLogo }
+    });
   };
 
   const handleChurchNameChange = (val: string) => {
@@ -161,7 +198,13 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   };
 
   const handleProjectChurchScreen = () => {
-    const fullConfig = { ...churchConfig, ...getChurchScreenConfig() };
+    const savedConfig = getChurchScreenConfig();
+    const effectiveLogo = churchConfig.logoUrl || savedConfig.logoUrl || localStorage.getItem('church_logo_url') || '';
+    const fullConfig: ChurchScreenConfig = {
+      ...savedConfig,
+      ...churchConfig,
+      logoUrl: effectiveLogo
+    };
     const payloadSong = {
       id: 'church-clock-projection',
       collection_id: 'utilitarios',
@@ -177,6 +220,9 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
     try {
       localStorage.setItem('church_name', churchName);
       localStorage.setItem('church_district', districtName);
+      if (effectiveLogo) {
+        localStorage.setItem('church_logo_url', effectiveLogo);
+      }
       localStorage.setItem('projection_active_type', 'church-clock');
       localStorage.setItem('projection_active_song_id', 'church-clock-projection');
       localStorage.setItem('projection_church_data', JSON.stringify({ 

@@ -138,7 +138,7 @@ export function ProjectionMiniature({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.85, y: 30 }}
       transition={{ type: "spring", stiffness: 350, damping: 28 }}
-      className="fixed bottom-20 right-4 sm:right-6 z-[60] w-72 sm:w-80 bg-[#0d1017]/95 border border-white/15 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden select-none flex flex-col group font-sans"
+      className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-3 right-3 sm:left-auto sm:right-6 sm:w-80 z-[60] bg-[#0d1017]/95 border border-white/15 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden select-none flex flex-col group font-sans"
       style={{
         boxShadow: `0 12px 35px -8px rgba(0, 0, 0, 0.7), 0 0 18px -4px ${accent.hex}30`
       }}

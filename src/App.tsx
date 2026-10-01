@@ -55,7 +55,7 @@ import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { MusicEmblem } from './components/MusicEmblem';
 import { useTheme } from './context/ThemeContext';
 import { AtmosphericBackground } from './components/AtmosphericBackground';
-import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected } from './utils/projectionSync';
+import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected, isMobileDevice } from './utils/projectionSync';
 import { LiturgiaSidebar } from './components/LiturgiaSidebar';
 import { LiturgiaFloatingView } from './components/LiturgiaFloatingView';
 import { getChurchScreenConfig } from './components/SpecialProjections';
@@ -222,7 +222,30 @@ function AppContent() {
   }, [isProjectOnlyMode]);
 
   const handleToggleProjectionWindow = useCallback(() => {
-    toggleSecondaryProjectionWindow(selectedSong || undefined);
+    if (isMobileDevice() && !isProjectionWindowOpen()) {
+      setIsTelasModalOpen(true);
+      return;
+    }
+    if (selectedSong) {
+      toggleSecondaryProjectionWindow(selectedSong, true);
+    } else {
+      const churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+      const districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+      const churchConfig = getChurchScreenConfig();
+      const localLogo = localStorage.getItem('church_logo_url') || '';
+      if (!churchConfig.logoUrl && localLogo) {
+        churchConfig.logoUrl = localLogo;
+      }
+      const churchSong: Song = {
+        id: 'church-clock-projection',
+        collection_id: 'utilitarios',
+        category: 'church-clock',
+        title: churchName,
+        lyrics: districtName,
+        author: JSON.stringify({ churchName, districtName, churchConfig })
+      };
+      toggleSecondaryProjectionWindow(churchSong, true);
+    }
   }, [selectedSong]);
 
   const handlePlaySong = async (songToPlay: Song) => {
@@ -244,9 +267,12 @@ function AppContent() {
       index: 0
     });
 
-    // Abre e sincroniza a tela de projeção externa imediatamente (igual ao sorteio e relógio)
+    // Abre e sincroniza a tela de projeção externa imediatamente
+    // No celular, não abre nova aba cobrindo a tela do operador a menos que já esteja aberta
     try {
-      await openSecondaryProjectionWindow(songToPlay);
+      if (!isMobileDevice() || isProjectionWindowOpen()) {
+        await openSecondaryProjectionWindow(songToPlay);
+      }
     } catch (e) {}
   };
 
@@ -517,6 +543,19 @@ function AppContent() {
     }
     return () => clearTimeout(timer);
   }, [isSlideMode, currentSlideIndex, slides, isPlaying]);
+
+  // Synchronize current slide index with projection window whenever operator advances
+  useEffect(() => {
+    if (selectedSong) {
+      try {
+        localStorage.setItem('projection_current_index', String(currentSlideIndex));
+      } catch (e) {}
+      broadcastToProjection({
+        type: 'SYNC_INDEX',
+        index: currentSlideIndex
+      });
+    }
+  }, [currentSlideIndex, selectedSong]);
 
   const handleScroll = (e: React.UIEvent<HTMLElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -1087,6 +1126,10 @@ function AppContent() {
       const churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
       const districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
       const churchConfig = getChurchScreenConfig();
+      const localLogo = localStorage.getItem('church_logo_url') || '';
+      if (!churchConfig.logoUrl && localLogo) {
+        churchConfig.logoUrl = localLogo;
+      }
       song = {
         id: 'church-clock-projection',
         collection_id: 'utilitarios',
@@ -1192,8 +1235,8 @@ function AppContent() {
   return (
     <div 
       className={cn(
-        "h-screen flex flex-col w-full relative overflow-hidden transition-colors duration-500",
-        isDarkMode ? "text-white" : "text-neutral-900"
+        "h-[100dvh] max-h-[100dvh] flex flex-col w-full relative overflow-hidden transition-colors duration-500 select-none",
+        isDarkMode ? "text-white bg-[#101216]" : "text-neutral-900 bg-neutral-50"
       )}
       style={zoomLevel !== 100 ? {
         transform: `scale(${zoomLevel / 100})`,
@@ -1231,7 +1274,7 @@ function AppContent() {
         onScroll={handleScroll}
         className={cn(
           "flex-1 min-h-0 w-full overflow-hidden relative z-10 transition-all duration-300",
-          isMenuInverted ? "pt-16 sm:pt-20 pb-16 sm:pb-20" : "pb-16 sm:pb-20",
+          isMenuInverted ? "pt-16 sm:pt-20 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]" : "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]",
           currentTab !== 'liturgia' && (!isLiturgiaSidebarCollapsed ? "md:pr-72 lg:pr-80" : "pr-0")
         )}
       >

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Tv, ExternalLink, Copy, Check, X, RefreshCw, Layers, CheckCircle2, AlertCircle, Laptop } from 'lucide-react';
+import { Monitor, Tv, ExternalLink, Copy, Check, X, RefreshCw, Layers, CheckCircle2, AlertCircle, Laptop, Smartphone } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { isMobileDevice } from '../utils/projectionSync';
 
 interface DetectedScreen {
   id: string;
@@ -224,7 +225,32 @@ export function TelasModal({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-hide py-4 space-y-5">
+          <div className="flex-1 overflow-y-auto scrollbar-hide py-4 space-y-4">
+            {/* Mobile Operator Guidance */}
+            {isMobileDevice() && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-400">
+                  <Smartphone className="w-4 h-4" />
+                  <span>Modo Operador no Celular</span>
+                </div>
+                <p className="leading-relaxed text-neutral-300">
+                  Você está usando o louvor no formato de celular. Para projetar na TV ou telão da igreja sem cobrir sua tela de controle, abra o link do projetor no computador conectado ao HDMI ou na Smart TV:
+                </p>
+                <div className="flex items-center gap-2 bg-black/50 p-2 rounded-xl border border-amber-500/20 font-mono text-[11px]">
+                  <span className="flex-1 truncate text-white">{window.location.origin}/?project=true</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`${window.location.origin}/?project=true`);
+                    }}
+                    className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg font-sans font-semibold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Copiar</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Real Screen Detection Section */}
             <div className="p-4 rounded-2xl bg-neutral-900/90 border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">

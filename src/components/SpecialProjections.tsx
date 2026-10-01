@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { ChurchScreenConfig, DEFAULT_CHURCH_CONFIG } from '../types';
 import { broadcastToProjection, subscribeToProjection } from '../utils/projectionSync';
 import { 
   saveChurchLogoToDb, 
@@ -10,6 +11,9 @@ import {
   saveChurchConfigToDb, 
   getChurchConfigFromDb 
 } from '../utils/churchDb';
+
+export type { ChurchScreenConfig };
+export { DEFAULT_CHURCH_CONFIG };
 
 export interface RandomInnerParticlesProps {
   count?: number;
@@ -302,29 +306,11 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
   );
 }
 
-export interface ChurchScreenConfig {
-  logoUrl?: string;
-  logoSize: number; // in px
-  churchNameSize: number; // in px
-  districtSize: number; // in px
-  clockSize: number; // in px
-  showRings?: boolean;
-}
-
-export const DEFAULT_CHURCH_CONFIG: ChurchScreenConfig = {
-  logoUrl: '',
-  logoSize: 100,
-  churchNameSize: 52,
-  districtSize: 22,
-  clockSize: 105,
-  showRings: true,
-};
-
 /**
  * Resizes and compresses an uploaded image file client-side to ensure it never exceeds storage quotas
  * and loads instantaneously across all projection displays.
  */
-export function compressImageFile(file: File, maxDimension = 600, quality = 0.9): Promise<string> {
+export function compressImageFile(file: File, maxDimension = 440, quality = 0.88): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -350,8 +336,23 @@ export function compressImageFile(file: File, maxDimension = 600, quality = 0.9)
           return;
         }
         ctx.drawImage(img, 0, 0, w, h);
+
+        // Try WebP first for ultra-lightweight size with alpha/transparency support
+        try {
+          const webpData = canvas.toDataURL('image/webp', quality);
+          if (webpData.startsWith('data:image/webp') && webpData.length < 180000) {
+            resolve(webpData);
+            return;
+          }
+        } catch (err) {}
+
         const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
-        resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+        try {
+          const result = canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality);
+          resolve(result);
+        } catch (err) {
+          resolve((e.target?.result as string) || '');
+        }
       };
       img.onerror = () => resolve((e.target?.result as string) || '');
       img.src = (e.target?.result as string) || '';
@@ -364,7 +365,7 @@ export function compressImageFile(file: File, maxDimension = 600, quality = 0.9)
 /**
  * Compresses an existing base64 data URL to ensure it never exceeds browser storage limits.
  */
-export function compressImageDataUrl(dataUrl: string, maxDimension = 600, quality = 0.9): Promise<string> {
+export function compressImageDataUrl(dataUrl: string, maxDimension = 440, quality = 0.88): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:image')) {
     return Promise.resolve(dataUrl || '');
   }
@@ -373,7 +374,7 @@ export function compressImageDataUrl(dataUrl: string, maxDimension = 600, qualit
     img.onload = () => {
       let w = img.width;
       let h = img.height;
-      if (w <= maxDimension && h <= maxDimension && dataUrl.length < 150000) {
+      if (w <= maxDimension && h <= maxDimension && dataUrl.length < 120000) {
         resolve(dataUrl);
         return;
       }
@@ -395,6 +396,15 @@ export function compressImageDataUrl(dataUrl: string, maxDimension = 600, qualit
         return;
       }
       ctx.drawImage(img, 0, 0, w, h);
+
+      try {
+        const webpData = canvas.toDataURL('image/webp', quality);
+        if (webpData.startsWith('data:image/webp') && webpData.length < 180000) {
+          resolve(webpData);
+          return;
+        }
+      } catch (err) {}
+
       const isPng = dataUrl.includes('image/png');
       resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
     };
@@ -403,16 +413,32 @@ export function compressImageDataUrl(dataUrl: string, maxDimension = 600, qualit
   });
 }
 
+let memoryCachedLogo = '';
+
+export function getMemoryCachedLogo(): string {
+  return memoryCachedLogo || localStorage.getItem('church_logo_url') || '';
+}
+
+export function setMemoryCachedLogo(url: string): void {
+  if (url) {
+    memoryCachedLogo = url;
+    try {
+      localStorage.setItem('church_logo_url', url);
+    } catch (e) {}
+  }
+}
+
 export function getChurchScreenConfig(): ChurchScreenConfig {
   try {
     const raw = localStorage.getItem('church_screen_config');
-    const fallbackLogo = localStorage.getItem('church_logo_url') || '';
+    const fallbackLogo = localStorage.getItem('church_logo_url') || memoryCachedLogo || '';
     if (raw) {
       const parsed = JSON.parse(raw);
+      const effective = parsed.logoUrl || fallbackLogo || memoryCachedLogo || '';
       return { 
         ...DEFAULT_CHURCH_CONFIG, 
         ...parsed, 
-        logoUrl: parsed.logoUrl || fallbackLogo 
+        logoUrl: effective 
       };
     } else if (fallbackLogo) {
       return {
@@ -421,14 +447,21 @@ export function getChurchScreenConfig(): ChurchScreenConfig {
       };
     }
   } catch (e) {}
-  return DEFAULT_CHURCH_CONFIG;
+  return {
+    ...DEFAULT_CHURCH_CONFIG,
+    logoUrl: memoryCachedLogo || ''
+  };
 }
 
 export function saveChurchScreenConfig(partial: Partial<ChurchScreenConfig>): ChurchScreenConfig {
   const current = getChurchScreenConfig();
   const updated = { ...current, ...partial };
 
-  // 1. Try to persist to localStorage (with fallback if logo size triggers quota limits)
+  if (updated.logoUrl !== undefined) {
+    memoryCachedLogo = updated.logoUrl;
+  }
+
+  // 1. Persist to localStorage (both in config object and individual church_logo_url key)
   try {
     localStorage.setItem('church_screen_config', JSON.stringify(updated));
     if (updated.logoUrl !== undefined) {
@@ -437,13 +470,29 @@ export function saveChurchScreenConfig(partial: Partial<ChurchScreenConfig>): Ch
   } catch (quotaErr) {
     console.warn('localStorage quota warning, preserving sizes and storing media in IndexedDB:', quotaErr);
     try {
-      // Save settings with blank logoUrl in localStorage so sizes are preserved
       const configWithoutLogo = { ...updated, logoUrl: '' };
       localStorage.setItem('church_screen_config', JSON.stringify(configWithoutLogo));
     } catch (e) {}
   }
 
-  // 2. Persist to IndexedDB for unlimited, persistent cross-window storage
+  // 2. Also keep projection_church_data in sync
+  try {
+    const raw = localStorage.getItem('projection_church_data');
+    let churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+    let districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.churchName) churchName = parsed.churchName;
+      if (parsed.districtName) districtName = parsed.districtName;
+    }
+    localStorage.setItem('projection_church_data', JSON.stringify({
+      churchName,
+      districtName,
+      churchConfig: updated
+    }));
+  } catch (e) {}
+
+  // 3. Persist to IndexedDB for unlimited, persistent cross-window storage
   try {
     saveChurchConfigToDb(updated);
     if (updated.logoUrl !== undefined) {
@@ -451,21 +500,26 @@ export function saveChurchScreenConfig(partial: Partial<ChurchScreenConfig>): Ch
         saveChurchLogoToDb(updated.logoUrl);
       } else {
         deleteChurchLogoFromDb();
+        memoryCachedLogo = '';
       }
     }
   } catch (idbErr) {
     console.warn('IndexedDB save warning:', idbErr);
   }
 
-  // 3. Dispatch in-window and cross-window events
+  // 4. Dispatch in-window and cross-window events
   try {
     window.dispatchEvent(new CustomEvent('church_config_changed', { detail: updated }));
   } catch (e) {}
 
   try {
     broadcastToProjection({
+      type: 'CHURCH_CONFIG_UPDATED' as any,
+      data: { churchConfig: updated, logoUrl: updated.logoUrl }
+    });
+    broadcastToProjection({
       type: 'SONG_UPDATED',
-      data: { churchConfig: updated }
+      data: { churchConfig: updated, logoUrl: updated.logoUrl }
     });
   } catch (e) {}
 
@@ -485,17 +539,17 @@ export function ChurchClockProjectionScreen({
 }: ChurchClockProjectionProps) {
   const { accent } = useTheme();
   const [timeString, setTimeString] = useState('');
-  const [internalConfig, setInternalConfig] = useState<ChurchScreenConfig>(() => {
-    return propConfig ? { ...DEFAULT_CHURCH_CONFIG, ...propConfig } : getChurchScreenConfig();
+
+  // Primary logo state, immediately hydrated from all synchronously available sources
+  const [activeLogo, setActiveLogo] = useState<string>(() => {
+    return (
+      propConfig?.logoUrl || 
+      localStorage.getItem('church_logo_url') || 
+      getChurchScreenConfig().logoUrl || 
+      memoryCachedLogo || 
+      ''
+    );
   });
-  
-  // Use propConfig if provided and valid, otherwise internalConfig
-  const config = useMemo(() => {
-    return {
-      ...internalConfig,
-      ...(propConfig || {})
-    };
-  }, [internalConfig, propConfig]);
 
   const [churchName, setChurchName] = useState(() => {
     return initialChurch || localStorage.getItem('church_name') || 'Igreja Parque do Sol';
@@ -504,7 +558,15 @@ export function ChurchClockProjectionScreen({
     return initialDistrict || localStorage.getItem('church_district') || 'Distrito de Cohab';
   });
 
-  // Keep live time updated
+  const [sizes, setSizes] = useState({
+    logoSize: propConfig?.logoSize || DEFAULT_CHURCH_CONFIG.logoSize,
+    churchNameSize: propConfig?.churchNameSize || DEFAULT_CHURCH_CONFIG.churchNameSize,
+    districtSize: propConfig?.districtSize || DEFAULT_CHURCH_CONFIG.districtSize,
+    clockSize: propConfig?.clockSize || DEFAULT_CHURCH_CONFIG.clockSize,
+    showRings: propConfig?.showRings !== false
+  });
+
+  // Keep live time updated every second
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -518,54 +580,90 @@ export function ChurchClockProjectionScreen({
     return () => clearInterval(interval);
   }, []);
 
-  // Hydrate logo & config from IndexedDB if not found or on initial load
+  // Update sizes when propConfig changes
   useEffect(() => {
+    if (propConfig) {
+      setSizes({
+        logoSize: propConfig.logoSize || DEFAULT_CHURCH_CONFIG.logoSize,
+        churchNameSize: propConfig.churchNameSize || DEFAULT_CHURCH_CONFIG.churchNameSize,
+        districtSize: propConfig.districtSize || DEFAULT_CHURCH_CONFIG.districtSize,
+        clockSize: propConfig.clockSize || DEFAULT_CHURCH_CONFIG.clockSize,
+        showRings: propConfig.showRings !== false
+      });
+    }
+  }, [propConfig?.logoSize, propConfig?.churchNameSize, propConfig?.districtSize, propConfig?.clockSize, propConfig?.showRings]);
+
+  // Keep activeLogo in sync when propConfig provides a non-empty logo
+  useEffect(() => {
+    if (propConfig?.logoUrl) {
+      setActiveLogo(propConfig.logoUrl);
+      setMemoryCachedLogo(propConfig.logoUrl);
+    }
+  }, [propConfig?.logoUrl]);
+
+  // Hydrate logo & config from IndexedDB and local storage on mount
+  useEffect(() => {
+    const localLogo = localStorage.getItem('church_logo_url') || getChurchScreenConfig().logoUrl || memoryCachedLogo;
+    if (localLogo) {
+      setActiveLogo(localLogo);
+      setMemoryCachedLogo(localLogo);
+    }
+
     getChurchLogoFromDb().then((dbLogo) => {
       if (dbLogo) {
-        setInternalConfig(prev => {
-          if (!prev.logoUrl || prev.logoUrl !== dbLogo) {
-            return { ...prev, logoUrl: dbLogo };
-          }
-          return prev;
-        });
+        setMemoryCachedLogo(dbLogo);
+        setActiveLogo(dbLogo);
       }
     }).catch(() => {});
 
     getChurchConfigFromDb().then((dbConfig) => {
       if (dbConfig) {
-        setInternalConfig(prev => ({ ...prev, ...dbConfig }));
+        if (dbConfig.logoUrl) {
+          setActiveLogo(dbConfig.logoUrl);
+        }
+        setSizes({
+          logoSize: dbConfig.logoSize || DEFAULT_CHURCH_CONFIG.logoSize,
+          churchNameSize: dbConfig.churchNameSize || DEFAULT_CHURCH_CONFIG.churchNameSize,
+          districtSize: dbConfig.districtSize || DEFAULT_CHURCH_CONFIG.districtSize,
+          clockSize: dbConfig.clockSize || DEFAULT_CHURCH_CONFIG.clockSize,
+          showRings: dbConfig.showRings !== false
+        });
       }
     }).catch(() => {});
   }, []);
 
-  // Update when propConfig changes
-  useEffect(() => {
-    if (propConfig) {
-      setInternalConfig(prev => ({ ...prev, ...propConfig }));
-    }
-  }, [propConfig]);
-
-  // Listen to storage or projection broadcast changes and config updates
+  // Listen to storage events, custom window events, and BroadcastChannel
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'church_name' && e.newValue) setChurchName(e.newValue);
       if (e.key === 'church_district' && e.newValue) setDistrictName(e.newValue);
+      if (e.key === 'church_logo_url' && e.newValue !== null) {
+        setActiveLogo(e.newValue);
+        setMemoryCachedLogo(e.newValue);
+      }
       if (e.key === 'church_screen_config' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setInternalConfig(prev => ({ ...prev, ...parsed }));
+          if (parsed.logoUrl) {
+            setActiveLogo(parsed.logoUrl);
+          }
+          setSizes(prev => ({
+            ...prev,
+            logoSize: parsed.logoSize ?? prev.logoSize,
+            churchNameSize: parsed.churchNameSize ?? prev.churchNameSize,
+            districtSize: parsed.districtSize ?? prev.districtSize,
+            clockSize: parsed.clockSize ?? prev.clockSize,
+            showRings: parsed.showRings ?? prev.showRings
+          }));
         } catch (err) {}
-      }
-      if (e.key === 'church_logo_url' && e.newValue !== null) {
-        setInternalConfig(prev => ({ ...prev, logoUrl: e.newValue || '' }));
       }
       if (e.key === 'projection_church_data' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed.churchName) setChurchName(parsed.churchName);
           if (parsed.districtName) setDistrictName(parsed.districtName);
-          if (parsed.churchConfig) {
-            setInternalConfig(prev => ({ ...prev, ...parsed.churchConfig }));
+          if (parsed.churchConfig?.logoUrl) {
+            setActiveLogo(parsed.churchConfig.logoUrl);
           }
         } catch (err) {}
       }
@@ -573,21 +671,46 @@ export function ChurchClockProjectionScreen({
 
     const handleCustomConfig = (e: any) => {
       if (e.detail) {
-        setInternalConfig(prev => ({ ...prev, ...e.detail }));
-      } else {
-        setInternalConfig(getChurchScreenConfig());
+        if (e.detail.logoUrl !== undefined) {
+          setActiveLogo(e.detail.logoUrl);
+          setMemoryCachedLogo(e.detail.logoUrl);
+        }
+        setSizes(prev => ({
+          ...prev,
+          logoSize: e.detail.logoSize ?? prev.logoSize,
+          churchNameSize: e.detail.churchNameSize ?? prev.churchNameSize,
+          districtSize: e.detail.districtSize ?? prev.districtSize,
+          clockSize: e.detail.clockSize ?? prev.clockSize,
+          showRings: e.detail.showRings ?? prev.showRings
+        }));
       }
     };
 
-    const unsubscribe = subscribeToProjection((msg) => {
+    const unsubscribe = subscribeToProjection((msg: any) => {
+      if (msg.data?.logoUrl) {
+        setActiveLogo(msg.data.logoUrl);
+        setMemoryCachedLogo(msg.data.logoUrl);
+      }
       if (msg.data?.churchConfig) {
-        setInternalConfig(prev => ({ ...prev, ...msg.data.churchConfig }));
+        if (msg.data.churchConfig.logoUrl) {
+          setActiveLogo(msg.data.churchConfig.logoUrl);
+          setMemoryCachedLogo(msg.data.churchConfig.logoUrl);
+        }
+        setSizes(prev => ({
+          ...prev,
+          logoSize: msg.data.churchConfig.logoSize ?? prev.logoSize,
+          churchNameSize: msg.data.churchConfig.churchNameSize ?? prev.churchNameSize,
+          districtSize: msg.data.churchConfig.districtSize ?? prev.districtSize,
+          clockSize: msg.data.churchConfig.clockSize ?? prev.clockSize,
+          showRings: msg.data.churchConfig.showRings ?? prev.showRings
+        }));
       }
       if (msg.song?.id === 'church-clock-projection' && msg.song.author && msg.song.author.startsWith('{')) {
         try {
           const parsed = JSON.parse(msg.song.author);
-          if (parsed.churchConfig) {
-            setInternalConfig(prev => ({ ...prev, ...parsed.churchConfig }));
+          if (parsed.churchConfig?.logoUrl) {
+            setActiveLogo(parsed.churchConfig.logoUrl);
+            setMemoryCachedLogo(parsed.churchConfig.logoUrl);
           }
           if (parsed.churchName) setChurchName(parsed.churchName);
           if (parsed.districtName) setDistrictName(parsed.districtName);
@@ -595,14 +718,26 @@ export function ChurchClockProjectionScreen({
       }
     });
 
+    // Rapid storage poll (300ms) to ensure cross-window synchronization even without storage events
+    const syncInterval = setInterval(() => {
+      const storedLogo = localStorage.getItem('church_logo_url');
+      if (storedLogo && storedLogo !== activeLogo) {
+        setActiveLogo(storedLogo);
+      }
+    }, 300);
+
     window.addEventListener('storage', handleStorage);
     window.addEventListener('church_config_changed', handleCustomConfig);
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('church_config_changed', handleCustomConfig);
+      clearInterval(syncInterval);
       unsubscribe();
     };
-  }, []);
+  }, [activeLogo]);
+
+  // Guaranteed resolution of the logo: check propConfig, activeLogo state, localStorage, and memory cache
+  const finalLogo = propConfig?.logoUrl || activeLogo || localStorage.getItem('church_logo_url') || memoryCachedLogo || '';
 
   return (
     <div className="w-full h-full bg-[#0a0a0c] flex flex-col justify-center items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none">
@@ -615,7 +750,7 @@ export function ChurchClockProjectionScreen({
       />
 
       {/* Atmospheric Concentric Rings */}
-      {config.showRings !== false && (
+      {sizes.showRings !== false && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div 
             className="w-[450px] h-[450px] sm:w-[650px] sm:h-[650px] md:w-[850px] md:h-[850px] rounded-full border border-neutral-800/40 opacity-40"
@@ -632,24 +767,19 @@ export function ChurchClockProjectionScreen({
       {/* Main Central Stage Display */}
       <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-5xl z-10 space-y-3 sm:space-y-5">
         {/* Church Image/Logo above Church Name */}
-        {config.logoUrl && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="flex items-center justify-center mb-1 max-w-full"
-          >
+        {finalLogo ? (
+          <div className="flex items-center justify-center mb-2 max-w-full">
             <img 
-              src={config.logoUrl} 
+              src={finalLogo} 
               alt="Logo da Igreja" 
-              className="object-contain drop-shadow-[0_4px_24px_rgba(0,0,0,0.85)] max-w-full"
+              className="object-contain drop-shadow-[0_4px_24px_rgba(0,0,0,0.85)] max-w-full transition-all duration-300"
               style={{
-                height: `${config.logoSize}px`,
-                maxHeight: `${config.logoSize}px`
+                height: `${sizes.logoSize || 100}px`,
+                maxHeight: `${sizes.logoSize || 100}px`
               }}
             />
-          </motion.div>
-        )}
+          </div>
+        ) : null}
 
         {/* Church & District Headers */}
         <motion.div 
@@ -661,7 +791,7 @@ export function ChurchClockProjectionScreen({
           {/* Igreja: Nome com tamanho editável */}
           <h1 
             className="font-bold tracking-tight text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)] leading-tight"
-            style={{ fontSize: `${config.churchNameSize}px` }}
+            style={{ fontSize: `${sizes.churchNameSize}px` }}
           >
             {churchName}
           </h1>
@@ -669,7 +799,7 @@ export function ChurchClockProjectionScreen({
           {/* Distrito: Tamanho editável */}
           <p 
             className="text-neutral-300 font-medium tracking-wide drop-shadow-md leading-normal"
-            style={{ fontSize: `${config.districtSize}px` }}
+            style={{ fontSize: `${sizes.districtSize}px` }}
           >
             {districtName}
           </p>
@@ -685,7 +815,7 @@ export function ChurchClockProjectionScreen({
           <span 
             className="font-mono font-bold tracking-widest transition-colors duration-500 select-none block leading-none"
             style={{
-              fontSize: `${config.clockSize}px`,
+              fontSize: `${sizes.clockSize}px`,
               color: accent.hex,
               filter: `drop-shadow(0 0 35px ${accent.hex}80) drop-shadow(0 0 70px ${accent.hex}40)`
             }}

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Song } from '../types';
 import { cn } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
-import { BibleProjectionScreen, SorteioProjectionScreen, ChurchClockProjectionScreen, ChurchScreenConfig } from './SpecialProjections';
+import { BibleProjectionScreen, SorteioProjectionScreen, ChurchClockProjectionScreen, ChurchScreenConfig, getChurchScreenConfig } from './SpecialProjections';
+import { getChurchLogoFromDb } from '../utils/churchDb';
 import { AtmosphericBackground } from './AtmosphericBackground';
 import { subscribeToProjection, broadcastToProjection, ProjectionMessage } from '../utils/projectionSync';
 import { getSupabase } from '../lib/supabase';
@@ -19,11 +20,37 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>('serif');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDragHelper, setShowDragHelper] = useState(true);
   const [churchLiveConfig, setChurchLiveConfig] = useState<ChurchScreenConfig | null>(null);
+  const [churchLiveLogo, setChurchLiveLogo] = useState<string>(() => {
+    return localStorage.getItem('church_logo_url') || getChurchScreenConfig().logoUrl || '';
+  });
   const wakeLockRef = useRef<any>(null);
   const mountedAtRef = useRef<number>(Date.now());
   
   const channelRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowDragHelper(false), 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Hydrate church logo and config from IndexedDB and local storage on mount
+  useEffect(() => {
+    const localLogo = localStorage.getItem('church_logo_url') || getChurchScreenConfig().logoUrl;
+    if (localLogo) {
+      setChurchLiveLogo(localLogo);
+    }
+    getChurchLogoFromDb().then(dbLogo => {
+      if (dbLogo) {
+        setChurchLiveLogo(dbLogo);
+        setChurchLiveConfig(prev => ({
+          ...(prev || getChurchScreenConfig()),
+          logoUrl: dbLogo
+        }));
+      }
+    }).catch(() => {});
+  }, []);
 
   const phrases = useMemo(() => {
     if (!song || !song.lyrics) return [];
@@ -478,7 +505,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         if (msg.song) {
           setSong(msg.song);
         }
-      } else if (msg.type === 'PROJECT_SONG' || msg.type === 'SONG_UPDATED') {
+      } else if (msg.type === 'PROJECT_SONG' || msg.type === 'SONG_UPDATED' || (msg.type as any) === 'CHURCH_CONFIG_UPDATED') {
         if (msg.song) {
           setSong(msg.song);
           if (typeof msg.index === 'number') {
@@ -510,20 +537,25 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             });
           }
         }
+        if (msg.data?.logoUrl) {
+          setChurchLiveLogo(msg.data.logoUrl);
+        }
         if (msg.data?.churchConfig) {
+          if (msg.data.churchConfig.logoUrl) {
+            setChurchLiveLogo(msg.data.churchConfig.logoUrl);
+          }
           setChurchLiveConfig(prev => ({ ...(prev || {}), ...msg.data.churchConfig }));
         }
         if (msg.song?.id === 'church-clock-projection' && msg.song.author && msg.song.author.startsWith('{')) {
           try {
             const parsed = JSON.parse(msg.song.author);
+            if (parsed.churchConfig?.logoUrl) {
+              setChurchLiveLogo(parsed.churchConfig.logoUrl);
+            }
             if (parsed.churchConfig) {
               setChurchLiveConfig(prev => ({ ...(prev || {}), ...parsed.churchConfig }));
             }
           } catch (e) {}
-        }
-      } else if ((msg.type as any) === 'CHURCH_CONFIG_UPDATED' || msg.data?.churchConfig) {
-        if (msg.data?.churchConfig) {
-          setChurchLiveConfig(prev => ({ ...(prev || {}), ...msg.data.churchConfig }));
         }
       } else if (msg.type === 'SORTEIO_UPDATE') {
         if (msg.data) {
@@ -555,9 +587,27 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
       }
     });
 
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'church_logo_url' && e.newValue !== null) {
+        setChurchLiveLogo(e.newValue);
+        setChurchLiveConfig(prev => ({ ...(prev || getChurchScreenConfig()), logoUrl: e.newValue || '' }));
+      }
+      if (e.key === 'church_screen_config' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.logoUrl) {
+            setChurchLiveLogo(parsed.logoUrl);
+          }
+          setChurchLiveConfig(prev => ({ ...(prev || {}), ...parsed }));
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
     return () => {
       clearTimeout(timerSync);
       unsubscribe();
+      window.removeEventListener('storage', handleStorage);
     };
   }, [initialSong]);
 
@@ -580,6 +630,12 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         const rawFont = localStorage.getItem('projection_font_family');
         if (rawFont && (rawFont === 'serif' || rawFont === 'montserrat' || rawFont === 'opensans')) {
           setFontFamily(prev => prev !== rawFont ? rawFont : prev);
+        }
+
+        // Synchronize church logo from localStorage in real time
+        const currentLocalLogo = localStorage.getItem('church_logo_url');
+        if (currentLocalLogo && currentLocalLogo !== churchLiveLogo) {
+          setChurchLiveLogo(currentLocalLogo);
         }
 
         if (activeType === 'sorteio') {
@@ -616,8 +672,24 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         } else if (activeType === 'church-clock') {
           const churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
           const districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+          let churchConfig: any = undefined;
+          try {
+            const rawChurch = localStorage.getItem('projection_church_data');
+            if (rawChurch) {
+              const parsed = JSON.parse(rawChurch);
+              if (parsed.churchConfig) churchConfig = parsed.churchConfig;
+            }
+          } catch (e) {}
+          if (!churchConfig) {
+            churchConfig = getChurchScreenConfig();
+          }
+          const localLogo = localStorage.getItem('church_logo_url') || '';
+          if (churchConfig && !churchConfig.logoUrl && localLogo) {
+            churchConfig.logoUrl = localLogo;
+          }
+          const newAuthor = JSON.stringify({ churchName, districtName, churchConfig });
           setSong(prev => {
-            if (prev && prev.id === 'church-clock-projection' && prev.title === churchName && prev.lyrics === districtName) {
+            if (prev && prev.id === 'church-clock-projection' && prev.title === churchName && prev.lyrics === districtName && prev.author === newAuthor) {
               return prev;
             }
             return {
@@ -626,7 +698,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
               category: 'church-clock',
               title: churchName,
               lyrics: districtName,
-              author: JSON.stringify({ churchName, districtName })
+              author: newAuthor
             };
           });
         } else if (activeType === 'bible') {
@@ -663,20 +735,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     return () => clearInterval(pollInterval);
   }, []);
 
-  if (!song || (!isSorteio && !song.lyrics && !song.title)) {
-    return (
-      <div 
-        onClick={toggleFullscreen}
-        onDoubleClick={toggleFullscreen}
-        className="fixed inset-0 bg-[#0b0d12] flex items-center justify-center select-none overflow-hidden cursor-pointer"
-      >
-        {/* Tela de projeção limpa com apenas o fundo dinâmico e sem nenhum botão */}
-        <AtmosphericBackground />
-      </div>
-    );
-  }
-
-  if (isBible) {
+  if (isBible && song) {
     return (
       <div 
         onClick={toggleFullscreen}
@@ -706,105 +765,134 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     );
   }
 
-  if (isChurchClock) {
-    let churchName = song?.title || 'Igreja Parque do Sol';
-    let districtName = song?.lyrics || 'Distrito de Cohab';
-    let churchConfig: ChurchScreenConfig | undefined = undefined;
-
-    if (song?.author && song.author.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(song.author);
-        if (parsed.churchName) churchName = parsed.churchName;
-        if (parsed.districtName) districtName = parsed.districtName;
-        if (parsed.churchConfig) churchConfig = parsed.churchConfig;
-      } catch (e) {}
-    }
-
-    try {
-      const raw = localStorage.getItem('projection_church_data');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.churchName) churchName = parsed.churchName;
-        if (parsed.districtName) districtName = parsed.districtName;
-        if (parsed.churchConfig && !churchConfig) churchConfig = parsed.churchConfig;
-      }
-    } catch (e) {}
-
-    const resolvedConfig = churchLiveConfig || churchConfig;
-
+  if (isRealSong && song && (song.lyrics || song.title)) {
     return (
       <div 
         onClick={toggleFullscreen}
         onDoubleClick={toggleFullscreen}
-        className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
+        className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden cursor-pointer"
       >
-        <ChurchClockProjectionScreen 
-          churchName={churchName} 
-          districtName={districtName} 
-          config={resolvedConfig}
-        />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentPhraseIndex}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex flex-col items-center gap-8 z-10"
+          >
+            <div
+              className={cn(
+                "text-center italic select-none drop-shadow-2xl transition-colors duration-300",
+                currentPhraseIndex === 0 ? "not-italic font-bold" : "text-white",
+                fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+              )}
+              style={{ 
+                fontSize: 'clamp(2.5rem, 8vw, 8rem)', 
+                lineHeight: '1.2',
+                color: currentPhraseIndex === 0 ? accent.hex : undefined,
+                filter: currentPhraseIndex === 0 ? `drop-shadow(0 4px 30px ${accent.hex}77)` : undefined
+              }}
+            >
+              {phrases[currentPhraseIndex] || song.title || ''}
+            </div>
+
+            {/* Next Phrase Preview: ONLY on Return Screen (3ª Tela / Tela de Retorno) */}
+            {isReturnScreen && currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
+              <div className="flex flex-col items-center gap-1.5 mt-8 border-t border-white/15 pt-5 w-full max-w-3xl">
+                <span className="text-xs uppercase tracking-widest font-mono text-amber-400 font-bold opacity-80">
+                  Próximo Slide (Retorno de Palco)
+                </span>
+                <div 
+                  className={cn(
+                    "text-center italic select-none text-white/50 transition-all duration-300",
+                    fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-medium" : "font-opensans font-semibold"
+                  )}
+                  style={{ fontSize: 'clamp(1.2rem, 3.5vw, 3rem)', lineHeight: '1.2' }}
+                >
+                  {phrases[currentPhraseIndex + 1]}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Return Screen Indicator Pill */}
+        {isReturnScreen && (
+          <div className="absolute top-4 left-4 z-50 bg-neutral-900/90 border border-amber-500/40 text-amber-400 px-3 py-1 rounded-full text-xs font-mono font-semibold backdrop-blur-md flex items-center gap-2 shadow-lg">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>Tela de Retorno (Palco)</span>
+          </div>
+        )}
       </div>
     );
   }
+
+  // Tela Padrão de Espera / Identificação da Igreja & Relógio Digital
+  let churchName = song?.title || 'Igreja Parque do Sol';
+  let districtName = song?.lyrics || 'Distrito de Cohab';
+  let churchConfig: ChurchScreenConfig | undefined = undefined;
+
+  if (song?.author && song.author.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(song.author);
+      if (parsed.churchName) churchName = parsed.churchName;
+      if (parsed.districtName) districtName = parsed.districtName;
+      if (parsed.churchConfig) churchConfig = parsed.churchConfig;
+    } catch (e) {}
+  }
+
+  try {
+    const raw = localStorage.getItem('projection_church_data');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.churchName) churchName = parsed.churchName;
+      if (parsed.districtName) districtName = parsed.districtName;
+      if (parsed.churchConfig && !churchConfig) churchConfig = parsed.churchConfig;
+    }
+  } catch (e) {}
+
+  if (!churchName || churchName === 'Sem Título') {
+    churchName = localStorage.getItem('church_name') || 'Igreja Parque do Sol';
+  }
+  if (!districtName) {
+    districtName = localStorage.getItem('church_district') || 'Distrito de Cohab';
+  }
+
+  const baseConfig = getChurchScreenConfig();
+  const localLogo = localStorage.getItem('church_logo_url') || '';
+  const effectiveLogo = churchLiveLogo || churchLiveConfig?.logoUrl || localLogo || churchConfig?.logoUrl || baseConfig.logoUrl || '';
+  const resolvedConfig: ChurchScreenConfig = {
+    ...baseConfig,
+    ...(churchConfig || {}),
+    ...(churchLiveConfig || {}),
+    logoUrl: effectiveLogo
+  };
 
   return (
     <div 
       onClick={toggleFullscreen}
       onDoubleClick={toggleFullscreen}
-      className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden cursor-pointer"
+      className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentPhraseIndex}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 1.05 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex flex-col items-center gap-8 z-10"
+      {showDragHelper && (
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDragHelper(false);
+          }}
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 bg-neutral-900/90 border border-neutral-700/80 rounded-full text-xs text-neutral-300 shadow-2xl flex items-center gap-3 backdrop-blur-md transition-all cursor-pointer hover:border-neutral-500"
+          title="Clique para ocultar este aviso"
         >
-          <div
-            className={cn(
-              "text-center italic select-none drop-shadow-2xl transition-colors duration-300",
-              currentPhraseIndex === 0 ? "not-italic font-bold" : "text-white",
-              fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
-            )}
-            style={{ 
-              fontSize: 'clamp(2.5rem, 8vw, 8rem)', 
-              lineHeight: '1.2',
-              color: currentPhraseIndex === 0 ? accent.hex : undefined,
-              filter: currentPhraseIndex === 0 ? `drop-shadow(0 4px 30px ${accent.hex}77)` : undefined
-            }}
-          >
-            {phrases[currentPhraseIndex] || song.title || ''}
-          </div>
-
-          {/* Next Phrase Preview: ONLY on Return Screen (3ª Tela / Tela de Retorno) */}
-          {isReturnScreen && currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
-            <div className="flex flex-col items-center gap-1.5 mt-8 border-t border-white/15 pt-5 w-full max-w-3xl">
-              <span className="text-xs uppercase tracking-widest font-mono text-amber-400 font-bold opacity-80">
-                Próximo Slide (Retorno de Palco)
-              </span>
-              <div 
-                className={cn(
-                  "text-center italic select-none text-white/50 transition-all duration-300",
-                  fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-medium" : "font-opensans font-semibold"
-                )}
-                style={{ fontSize: 'clamp(1.2rem, 3.5vw, 3rem)', lineHeight: '1.2' }}
-              >
-                {phrases[currentPhraseIndex + 1]}
-              </div>
-            </div>
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Return Screen Indicator Pill */}
-      {isReturnScreen && (
-        <div className="absolute top-4 left-4 z-50 bg-neutral-900/90 border border-amber-500/40 text-amber-400 px-3 py-1 rounded-full text-xs font-mono font-semibold backdrop-blur-md flex items-center gap-2 shadow-lg">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>Tela de Retorno (Palco)</span>
+          <span>📺 Projeção: Arraste para o Projetor / TV (HDMI) e aperte F11</span>
+          <span className="text-neutral-500 text-xs">✕</span>
         </div>
       )}
+      <ChurchClockProjectionScreen 
+        churchName={churchName} 
+        districtName={districtName} 
+        config={resolvedConfig}
+      />
     </div>
   );
 }

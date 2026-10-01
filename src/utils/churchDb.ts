@@ -1,7 +1,7 @@
 // IndexedDB helper for Church Projection media and configuration
 // Provides reliable persistent storage across windows and tabs, bypassing 5MB localStorage limits.
 
-import { ChurchScreenConfig, DEFAULT_CHURCH_CONFIG } from '../components/SpecialProjections';
+import { ChurchScreenConfig } from '../types';
 
 const DB_NAME = 'adventist_church_projection_db';
 const STORE_NAME = 'church_media';

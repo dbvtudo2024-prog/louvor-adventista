@@ -185,6 +185,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
   const [searchGlobalQuery, setSearchGlobalQuery] = useState('');
   const [verseSearchQuery, setVerseSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'nav' | 'verses'>('nav');
 
   // Estados da Bíblia Completa nativa (ARA/NVI) e importada pelo usuário
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -438,6 +439,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
   const handleSelectChapter = (ch: number) => {
     setSelectedChapter(ch);
     setSelectedVerseIndex(null);
+    setMobileTab('verses');
   };
 
   const handlePrevChapter = () => {
@@ -660,6 +662,33 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
       </div>
 
       {/* ============================================================ */}
+      {/* MOBILE SWITCHER BAR (<lg breakpoint)                          */}
+      {/* ============================================================ */}
+      <div className="flex lg:hidden items-center bg-[#16171a] p-1 rounded-xl border border-neutral-800 shrink-0">
+        <button
+          onClick={() => setMobileTab('nav')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            mobileTab === 'nav' 
+              ? 'bg-neutral-800 text-white shadow-sm' 
+              : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          Livros & Capítulos
+        </button>
+        <button
+          onClick={() => setMobileTab('verses')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            mobileTab === 'verses' 
+              ? 'text-white shadow-sm' 
+              : 'text-neutral-400 hover:text-white'
+          }`}
+          style={mobileTab === 'verses' ? { backgroundColor: `${accent.hex}25`, color: accent.hex } : undefined}
+        >
+          <span>Versículos ({selectedBook.abbr} {selectedChapter})</span>
+        </button>
+      </div>
+
+      {/* ============================================================ */}
       {/* 2 MAIN PANELS WORKSPACE (EXACT MATCH WITH screenshot)        */}
       {/* ============================================================ */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2.5 lg:overflow-hidden">
@@ -667,7 +696,9 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         {/* ------------------------------------------------------------ */}
         {/* LEFT PANEL: LIVROS & CAPÍTULOS (Col-span 5 in 12-col)        */}
         {/* ------------------------------------------------------------ */}
-        <div className="lg:col-span-5 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 flex flex-col h-[340px] sm:h-[380px] lg:h-full overflow-hidden shadow-md shrink-0">
+        <div className={`lg:col-span-5 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 flex flex-col overflow-hidden shadow-md shrink-0 ${
+          mobileTab === 'verses' ? 'hidden lg:flex' : 'flex-1 h-[420px] sm:h-[460px] lg:h-full'
+        }`}>
           <div className="grid grid-cols-12 gap-3 h-full overflow-hidden">
             
             {/* SUB-COLUMN A: LIVROS (Cols 8 of 12) */}
@@ -797,13 +828,23 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         {/* ------------------------------------------------------------ */}
         {/* RIGHT PANEL: VERSÍCULOS & LEITURA (Col-span 7 in 12-col)     */}
         {/* ------------------------------------------------------------ */}
-        <div className="lg:col-span-7 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3.5 flex flex-col h-[480px] lg:h-full overflow-hidden relative shadow-md shrink-0">
+        <div className={`lg:col-span-7 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 sm:p-3.5 flex flex-col overflow-hidden relative shadow-md shrink-0 ${
+          mobileTab === 'nav' ? 'hidden lg:flex' : 'flex-1 h-[480px] sm:h-[520px] lg:h-full'
+        }`}>
           
           {/* Header row matching image.png */}
           <div className="flex items-center justify-between pb-2 border-b border-neutral-800/80 shrink-0 gap-2">
             {/* Left: Title + Arrow navigation + Red circle button */}
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => setMobileTab('nav')}
+                className="lg:hidden p-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:text-white flex items-center gap-1 text-xs"
+                title="Voltar para Livros e Capítulos"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Livros</span>
+              </button>
+              <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight">
                 {selectedBook.name} {selectedChapter}
               </h2>
 

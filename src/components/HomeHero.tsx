@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Edit2, Check, X, Presentation } from 'lucide-react';
+import { Edit2, Check, X, Presentation, Upload, Trash2, Image as ImageIcon, Tv, Copy, ExternalLink, QrCode } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { broadcastToProjection, openSecondaryProjectionWindow, isProjectionWindowOpen, closeProjectionWindow } from '../utils/projectionSync';
+import { broadcastToProjection, openSecondaryProjectionWindow, isProjectionWindowOpen, closeProjectionWindow, isMobileDevice } from '../utils/projectionSync';
 import { Song } from '../types';
-import { getChurchScreenConfig } from './SpecialProjections';
-import { getChurchLogoFromDb } from '../utils/churchDb';
+import { getChurchScreenConfig, saveChurchScreenConfig, compressImageFile, ChurchScreenConfig } from './SpecialProjections';
+import { getChurchLogoFromDb, saveChurchLogoToDb, deleteChurchLogoFromDb } from '../utils/churchDb';
 
 export function HomeHero() {
   const { accent } = useTheme();
@@ -21,12 +21,16 @@ export function HomeHero() {
     return localStorage.getItem('church_name') || 'Igreja Parque do Sol';
   });
   const [churchLogo, setChurchLogo] = useState(() => {
-    return getChurchScreenConfig().logoUrl || '';
+    return localStorage.getItem('church_logo_url') || getChurchScreenConfig().logoUrl || '';
   });
   const [isEditingChurch, setIsEditingChurch] = useState(false);
+  const [showTvLinkModal, setShowTvLinkModal] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [tempDistrict, setTempDistrict] = useState(districtName);
   const [tempChurch, setTempChurch] = useState(churchName);
+  const [tempLogo, setTempLogo] = useState(churchLogo);
   const [isProjectingNotice, setIsProjectingNotice] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Update clock every second
   useEffect(() => {
@@ -43,27 +47,44 @@ export function HomeHero() {
     return () => clearInterval(interval);
   }, []);
 
-  // Listen to church logo config updates
+  // Listen to church logo config updates & hydrate from server and IndexedDB
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'church_name' && e.newValue) setChurchName(e.newValue);
+      if (e.key === 'church_district' && e.newValue) setDistrictName(e.newValue);
+      if (e.key === 'church_logo_url' && e.newValue !== null) {
+        setChurchLogo(e.newValue);
+      }
       if (e.key === 'church_screen_config' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setChurchLogo(parsed.logoUrl || '');
+          if (parsed.logoUrl !== undefined) setChurchLogo(parsed.logoUrl);
         } catch (err) {}
       }
     };
+
     const handleConfigChange = (e: any) => {
       if (e.detail?.logoUrl !== undefined) {
         setChurchLogo(e.detail.logoUrl);
-      } else {
-        setChurchLogo(getChurchScreenConfig().logoUrl || '');
       }
+      if (e.detail?.churchName) setChurchName(e.detail.churchName);
+      if (e.detail?.districtName) setDistrictName(e.detail.districtName);
     };
-    // Hydrate from IndexedDB if not set
+
+    // Hydrate from IndexedDB
     getChurchLogoFromDb().then(dbLogo => {
       if (dbLogo) setChurchLogo(dbLogo);
     }).catch(() => {});
+
+    // Hydrate from backend API
+    fetch('/api/church-config')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.logoUrl) setChurchLogo(data.logoUrl);
+        if (data?.churchName) setChurchName(data.churchName);
+        if (data?.districtName) setDistrictName(data.districtName);
+      })
+      .catch(() => {});
 
     window.addEventListener('storage', handleStorage);
     window.addEventListener('church_config_changed', handleConfigChange);
@@ -73,32 +94,80 @@ export function HomeHero() {
     };
   }, []);
 
-  const handleSaveChurchInfo = (e?: React.FormEvent) => {
+  const handleModalLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await compressImageFile(file, 440, 0.88);
+      if (compressed) {
+        setTempLogo(compressed);
+        return;
+      }
+    } catch (err) {}
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setTempLogo(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveChurchInfo = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanDistrict = tempDistrict.trim() || 'Distrito de Cohab';
     const cleanChurch = tempChurch.trim() || 'Igreja Parque do Sol';
-    const fullConfig = getChurchScreenConfig();
+    const effectiveLogo = tempLogo || '';
+
     setDistrictName(cleanDistrict);
     setChurchName(cleanChurch);
-    localStorage.setItem('church_district', cleanDistrict);
-    localStorage.setItem('church_name', cleanChurch);
-    localStorage.setItem('projection_church_data', JSON.stringify({
-      churchName: cleanChurch,
-      districtName: cleanDistrict,
-      churchConfig: fullConfig
-    }));
+    setChurchLogo(effectiveLogo);
+
+    saveChurchScreenConfig({
+      logoUrl: effectiveLogo
+    });
+
+    if (effectiveLogo) {
+      await saveChurchLogoToDb(effectiveLogo);
+    } else {
+      await deleteChurchLogoFromDb();
+    }
+
+    try {
+      localStorage.setItem('church_district', cleanDistrict);
+      localStorage.setItem('church_name', cleanChurch);
+      localStorage.setItem('church_logo_url', effectiveLogo);
+      localStorage.setItem('projection_church_data', JSON.stringify({
+        churchName: cleanChurch,
+        districtName: cleanDistrict,
+        churchConfig: { ...getChurchScreenConfig(), logoUrl: effectiveLogo }
+      }));
+    } catch (err) {}
+
+    // Broadcast immediate update to projection window
+    const payloadSong = {
+      id: 'church-clock-projection',
+      collection_id: 'utilitarios',
+      category: 'church-clock',
+      title: cleanChurch,
+      lyrics: cleanDistrict,
+      author: JSON.stringify({ 
+        churchName: cleanChurch, 
+        districtName: cleanDistrict, 
+        churchConfig: { ...getChurchScreenConfig(), logoUrl: effectiveLogo } 
+      })
+    };
 
     broadcastToProjection({
       type: 'PROJECT_SONG',
-      song: {
-        id: 'church-clock-projection',
-        collection_id: 'utilitarios',
-        category: 'church-clock',
-        title: cleanChurch,
-        lyrics: cleanDistrict,
-        author: JSON.stringify({ churchName: cleanChurch, districtName: cleanDistrict, churchConfig: fullConfig })
-      },
-      data: { churchConfig: fullConfig }
+      song: payloadSong as any,
+      index: 0,
+      data: { 
+        churchConfig: { ...getChurchScreenConfig(), logoUrl: effectiveLogo },
+        logoUrl: effectiveLogo
+      }
     });
 
     setIsEditingChurch(false);
@@ -125,7 +194,12 @@ export function HomeHero() {
       return;
     }
 
-    const fullConfig = getChurchScreenConfig();
+    const savedConfig = getChurchScreenConfig();
+    const effectiveLogo = churchLogo || savedConfig.logoUrl || localStorage.getItem('church_logo_url') || '';
+    const fullConfig: ChurchScreenConfig = {
+      ...savedConfig,
+      logoUrl: effectiveLogo
+    };
     const payloadSong: Song = {
       id: 'church-clock-projection',
       collection_id: 'utilitarios',
@@ -138,6 +212,9 @@ export function HomeHero() {
     try {
       localStorage.setItem('church_name', churchName);
       localStorage.setItem('church_district', districtName);
+      if (effectiveLogo) {
+        localStorage.setItem('church_logo_url', effectiveLogo);
+      }
       localStorage.setItem('projection_active_type', 'church-clock');
       localStorage.setItem('projection_active_song_id', 'church-clock-projection');
       localStorage.setItem('projection_church_data', JSON.stringify({ churchName, districtName, churchConfig: fullConfig }));
@@ -148,7 +225,7 @@ export function HomeHero() {
       type: 'PROJECT_SONG',
       song: payloadSong,
       index: 0,
-      data: { churchConfig: fullConfig }
+      data: { churchConfig: fullConfig, logoUrl: effectiveLogo }
     });
 
     await openSecondaryProjectionWindow(payloadSong);
@@ -168,54 +245,57 @@ export function HomeHero() {
       />
 
       {/* Main Central Stage Display */}
-      <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-3xl z-10 space-y-4">
+      <div className="flex flex-col items-center justify-center text-center my-auto w-full max-w-3xl z-10 space-y-3 sm:space-y-4">
         {/* Church & District Headers (Inverted: Church First & Larger, District Second & Smaller) */}
         <div 
           className="relative group cursor-pointer" 
           onClick={() => {
             setTempDistrict(districtName);
             setTempChurch(churchName);
+            setTempLogo(churchLogo);
             setIsEditingChurch(true);
           }}
         >
           {churchLogo && (
-            <div className="flex items-center justify-center mb-3">
+            <div className="flex items-center justify-center mb-2 sm:mb-3">
               <img 
                 src={churchLogo} 
                 alt="Logo da Igreja" 
-                className="h-14 sm:h-18 object-contain drop-shadow-md max-w-[200px]" 
+                className="h-12 xs:h-14 sm:h-20 object-contain drop-shadow-md max-w-[240px]" 
               />
             </div>
           )}
 
           {/* Nome da Igreja Primeiro e Maior */}
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white flex items-center justify-center gap-3">
-            {churchName}
+          <h2 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white flex items-center justify-center gap-2 sm:gap-3 leading-tight">
+            <span>{churchName}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setTempDistrict(districtName);
                 setTempChurch(churchName);
+                setTempLogo(churchLogo);
                 setIsEditingChurch(true);
               }}
-              className="opacity-70 hover:opacity-100 p-1.5 text-neutral-400 hover:text-white transition-all rounded-lg hover:bg-neutral-800/80 cursor-pointer"
-              title="Editar identificação da igreja"
+              className="opacity-70 hover:opacity-100 p-1.5 text-neutral-400 hover:text-white transition-all rounded-lg hover:bg-neutral-800/80 cursor-pointer shrink-0"
+              title="Editar identificação e imagem da igreja"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </h2>
 
           {/* Distrito Segundo e Menor */}
-          <p className="text-base sm:text-lg md:text-xl text-neutral-300 font-medium tracking-wide mt-1.5">
+          <p className="text-sm xs:text-base sm:text-lg md:text-xl text-neutral-300 font-medium tracking-wide mt-1">
             {districtName}
           </p>
         </div>
 
-        {/* Live Digital Clock (Em Baixo) */}
-        <div className="pt-2">
+        {/* Live Digital Clock - Responsive for mobile without wrapping */}
+        <div className="pt-1 sm:pt-2">
           <span 
-            className="font-mono text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-widest transition-colors duration-500 select-none"
+            className="font-mono font-bold tracking-normal sm:tracking-widest transition-colors duration-500 select-none block leading-none"
             style={{
+              fontSize: 'clamp(2.5rem, 11vw, 5.5rem)',
               color: accent.hex,
               filter: `drop-shadow(0 0 25px ${accent.hex}70)`
             }}
@@ -224,28 +304,129 @@ export function HomeHero() {
           </span>
         </div>
 
-        {/* Action Button: Projetar essa área em outra tela (discreto, sem escrita) */}
-        <div className="pt-2 flex items-center justify-center">
+        {/* Action Controls: Mobile-friendly buttons */}
+        <div className="pt-2 sm:pt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
           <button
             onClick={handleProjectScreen}
-            className="w-10 h-10 rounded-full bg-neutral-900/60 hover:bg-neutral-800/90 text-neutral-400 hover:text-white border border-neutral-800/80 hover:border-neutral-700 shadow-md backdrop-blur-md flex items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 group relative"
+            className="px-3.5 sm:px-4 py-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-white border border-neutral-700/80 shadow-md backdrop-blur-md flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold transition-all cursor-pointer active:scale-95 group"
             style={(isCurrentlyProjecting || isProjectingNotice) ? { borderColor: `${accent.hex}90`, color: accent.hex, backgroundColor: `${accent.hex}20` } : undefined}
-            title={(isCurrentlyProjecting || isProjectingNotice) ? "Fechar projeção em outra tela" : "Projetar em outra tela"}
-            aria-label={(isCurrentlyProjecting || isProjectingNotice) ? "Fechar projeção em outra tela" : "Projetar em outra tela"}
           >
-            <Presentation 
-              className="w-4 h-4 transition-transform group-hover:scale-110" 
-              style={{ color: (isCurrentlyProjecting || isProjectingNotice) ? accent.hex : undefined }} 
-            />
+            <Presentation className="w-4 h-4" style={{ color: (isCurrentlyProjecting || isProjectingNotice) ? accent.hex : undefined }} />
+            <span>{(isCurrentlyProjecting || isProjectingNotice) ? "Fechar Projeção" : "Projetar no Telão"}</span>
             {(isCurrentlyProjecting || isProjectingNotice) && (
-              <span 
-                className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
-                style={{ backgroundColor: accent.hex }}
-              />
+              <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: accent.hex }} />
             )}
+          </button>
+
+          <button
+            onClick={() => setShowTvLinkModal(true)}
+            className="px-3 py-2 rounded-xl bg-neutral-900/60 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 text-xs sm:text-sm font-medium transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+            title="Conectar com Smart TV ou Projetor da Igreja"
+          >
+            <Tv className="w-3.5 h-3.5" style={{ color: accent.hex }} />
+            <span>Link do Telão / TV</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setTempDistrict(districtName);
+              setTempChurch(churchName);
+              setTempLogo(churchLogo);
+              setIsEditingChurch(true);
+            }}
+            className="px-3 py-2 rounded-xl bg-neutral-900/60 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 text-xs sm:text-sm font-medium transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+          >
+            <ImageIcon className="w-3.5 h-3.5 text-neutral-400" />
+            <span>{churchLogo ? "Alterar Logo" : "Adicionar Logo"}</span>
           </button>
         </div>
       </div>
+
+      {/* TV / Telão Connection Modal */}
+      <AnimatePresence>
+        {showTvLinkModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="bg-[#18181b] border border-neutral-700/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl text-left"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div 
+                    className="w-9 h-9 rounded-xl flex items-center justify-center border"
+                    style={{ backgroundColor: `${accent.hex}20`, borderColor: `${accent.hex}40`, color: accent.hex }}
+                  >
+                    <Tv className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Conectar ao Telão / TV</h3>
+                    <p className="text-xs text-neutral-400">Controle tudo pelo celular em tempo real</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTvLinkModal(false)}
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-neutral-900/90 p-3.5 rounded-xl border border-neutral-800 space-y-2">
+                  <p className="text-xs font-semibold text-neutral-300">
+                    Abra este link no computador do projetor ou na Smart TV:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      readOnly 
+                      value={`${window.location.origin}/?project=true`}
+                      className="flex-1 bg-black/50 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono truncate select-all"
+                    />
+                    <button
+                      onClick={() => {
+                        const link = `${window.location.origin}/?project=true`;
+                        navigator.clipboard?.writeText(link);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2000);
+                      }}
+                      className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      window.open(`${window.location.origin}/?project=true`, '_blank');
+                    }}
+                    className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir em Nova Aba</span>
+                  </button>
+                  <button
+                    onClick={() => setShowTvLinkModal(false)}
+                    className="py-2.5 px-4 font-bold text-xs rounded-xl text-neutral-950 transition-all cursor-pointer hover:brightness-110"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pronto
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Edit Church Info Modal */}
       <AnimatePresence>
@@ -260,22 +441,76 @@ export function HomeHero() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#18181b] border border-neutral-700 rounded-3xl p-6 max-w-md w-full shadow-2xl text-left"
+              className="bg-[#18181b] border border-neutral-700 rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl text-left max-h-[90vh] overflow-y-auto"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <div className="flex items-center justify-between mb-4 border-b border-neutral-800 pb-3">
+                <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                   <Edit2 className="w-4 h-4" style={{ color: accent.hex }} />
-                  Identificação da Igreja
+                  <span>Identificação da Igreja</span>
                 </h3>
                 <button
                   onClick={() => setIsEditingChurch(false)}
-                  className="p-1 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <form onSubmit={handleSaveChurchInfo} className="space-y-4">
+                {/* Logo Upload Section */}
+                <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800 space-y-2.5">
+                  <label className="block text-xs font-semibold text-neutral-300">
+                    Imagem / Logotipo Acima do Nome
+                  </label>
+
+                  <input 
+                    type="file" 
+                    ref={logoInputRef}
+                    accept="image/*"
+                    onChange={handleModalLogoUpload}
+                    className="hidden" 
+                  />
+
+                  {tempLogo ? (
+                    <div className="flex items-center justify-between gap-3 bg-black/40 p-2.5 rounded-lg border border-neutral-800">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img 
+                          src={tempLogo} 
+                          alt="Prévia Logo" 
+                          className="h-10 w-10 object-contain rounded bg-neutral-900 border border-neutral-700" 
+                        />
+                        <span className="text-xs text-neutral-300 truncate">Imagem Selecionada</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="px-2.5 py-1 text-[11px] bg-neutral-800 hover:bg-neutral-700 text-white rounded-md cursor-pointer"
+                        >
+                          Trocar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTempLogo('')}
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md cursor-pointer"
+                          title="Remover"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="w-full py-2.5 px-3 bg-neutral-800/80 hover:bg-neutral-800 border border-dashed border-neutral-700 hover:border-neutral-500 rounded-xl text-xs font-medium text-neutral-300 flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-4 h-4" style={{ color: accent.hex }} />
+                      <span>Selecionar Imagem / Logotipo (PNG/JPG)</span>
+                    </button>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
                     Nome da Igreja Local
@@ -285,7 +520,7 @@ export function HomeHero() {
                     value={tempChurch}
                     onChange={(e) => setTempChurch(e.target.value)}
                     placeholder="Ex: Igreja Parque do Sol"
-                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
+                    className="w-full px-3.5 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
                     style={{ borderColor: `${accent.hex}40` }}
                   />
                 </div>
@@ -299,7 +534,7 @@ export function HomeHero() {
                     value={tempDistrict}
                     onChange={(e) => setTempDistrict(e.target.value)}
                     placeholder="Ex: Distrito de Cohab"
-                    className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
+                    className="w-full px-3.5 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-sm outline-none"
                     style={{ borderColor: `${accent.hex}40` }}
                   />
                 </div>
@@ -307,17 +542,18 @@ export function HomeHero() {
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 text-neutral-950 font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm cursor-pointer hover:brightness-110"
+                    className="flex-1 py-2.5 text-neutral-950 font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm cursor-pointer hover:brightness-110 active:scale-95"
                     style={{ backgroundColor: accent.hex }}
                   >
                     <Check className="w-4 h-4 stroke-[3]" />
-                    Salvar Dados
+                    <span>Salvar Dados</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setTempChurch('Igreja Parque do Sol');
                       setTempDistrict('Distrito de Cohab');
+                      setTempLogo('');
                     }}
                     className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition-colors cursor-pointer"
                   >

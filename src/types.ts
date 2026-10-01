@@ -58,3 +58,21 @@ export interface LiturgyCategory {
   endTime?: string;
   notes?: string;
 }
+
+export interface ChurchScreenConfig {
+  logoUrl?: string;
+  logoSize: number; // in px
+  churchNameSize: number; // in px
+  districtSize: number; // in px
+  clockSize: number; // in px
+  showRings?: boolean;
+}
+
+export const DEFAULT_CHURCH_CONFIG: ChurchScreenConfig = {
+  logoUrl: '',
+  logoSize: 100,
+  churchNameSize: 52,
+  districtSize: 22,
+  clockSize: 105,
+  showRings: true,
+};
