@@ -25,6 +25,20 @@ const DAYS = [
   { id: 'avulsa', label: 'Avulsa', fullName: 'Programação Avulsa' }
 ];
 
+const getTodayDayId = (): string => {
+  const dayIndex = new Date().getDay();
+  const map: Record<number, string> = {
+    0: 'dom',
+    1: 'seg',
+    2: 'ter',
+    3: 'qua',
+    4: 'qui',
+    5: 'sex',
+    6: 'sab'
+  };
+  return map[dayIndex] || 'seg';
+};
+
 const EMPTY_LITURGIES: Record<string, LiturgyCategory[]> = {
   dom: [],
   seg: [],
@@ -44,8 +58,21 @@ export function LiturgiaView({
 }: LiturgiaViewProps) {
   const { accent, isDarkMode } = useTheme();
 
-  // Active Day - default to Saturday ('sab') as the main Adventist worship day
-  const [selectedDay, setSelectedDay] = useState<string>('sab');
+  // Active Day - defaults to saved day or current day of the week
+  const [selectedDay, setSelectedDay] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('adventist_active_liturgia_day');
+      if (saved) return saved;
+    } catch (e) {}
+    return getTodayDayId();
+  });
+
+  const handleSelectDay = (dayId: string) => {
+    setSelectedDay(dayId);
+    try {
+      localStorage.setItem('adventist_active_liturgia_day', dayId);
+    } catch (e) {}
+  };
   
   // Real-time clock for header
   const [currentTime, setCurrentTime] = useState<string>('');
@@ -282,14 +309,14 @@ export function LiturgiaView({
 
         {/* Days bar & Action buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Days pills */}
+          {/* Barra de todos os dias da semana na página de liturgia */}
           <div className="flex items-center gap-1 bg-neutral-900/90 p-1 rounded-xl border border-neutral-800 overflow-x-auto max-w-full custom-scrollbar">
             {DAYS.map(day => {
               const isSelected = selectedDay === day.id;
               return (
                 <button
                   key={day.id}
-                  onClick={() => setSelectedDay(day.id)}
+                  onClick={() => handleSelectDay(day.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     isSelected
                       ? 'shadow-md scale-105'

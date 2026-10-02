@@ -251,8 +251,8 @@ function AppContent() {
   const handlePlaySong = async (songToPlay: Song) => {
     setSelectedSong(songToPlay);
     setIsPlaying(true);
-    setIsProjecting(true);
-    setIsProjectionMinimized(true);
+    setIsProjecting(false);
+    setIsProjectionMinimized(false);
 
     try {
       localStorage.setItem('projection_active_type', 'song');
@@ -1634,23 +1634,18 @@ function AppContent() {
                       <div className="flex items-center gap-2 shrink-0">
                         <button 
                           onClick={() => {
-                            handlePlaySong(selectedSong);
+                            if (isPlaying) {
+                              audio.pause();
+                              setIsPlaying(false);
+                            } else {
+                              handlePlaySong(selectedSong);
+                            }
                           }}
                           className="w-10 h-10 rounded-full text-neutral-950 shadow-md flex items-center justify-center hover:scale-105 transition-all active:scale-95 cursor-pointer"
                           style={{ backgroundColor: accent.hex }}
-                          title={isPlaying ? "Pausar" : "Tocar e Projetar (Tela do Utilizador)"}
+                          title={isPlaying ? "Pausar" : "Tocar Música"}
                         >
                           {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-                        </button>
-                        <button 
-                          onClick={() => {
-                            handlePlaySong(selectedSong);
-                          }}
-                          className="w-10 h-10 rounded-full bg-neutral-800 text-neutral-300 shadow-sm flex items-center justify-center hover:bg-neutral-700 transition-all active:scale-95 cursor-pointer"
-                          style={{ color: accent.hex }}
-                          title="Projetar Letra (Tela do Utilizador)"
-                        >
-                          <Monitor className="w-5 h-5" />
                         </button>
                       </div>
                     </div>
@@ -1887,7 +1882,7 @@ function AppContent() {
                 onSaveSongSlides={handleSaveSongSlides}
                 onProjectContent={(utilitySong) => {
                   setSelectedSong(utilitySong);
-                  setIsProjecting(true);
+                  setIsProjecting(false);
                   try {
                     localStorage.setItem('projection_current_song', JSON.stringify(utilitySong));
                   } catch (e) {}
@@ -1896,6 +1891,7 @@ function AppContent() {
                     song: utilitySong,
                     index: 0
                   });
+                  openSecondaryProjectionWindow(utilitySong);
                 }}
                 onBackToHome={() => handleSelectTab('inicio')}
               />
@@ -1916,7 +1912,7 @@ function AppContent() {
         )}
       </main>
 
-      {/* Quadro da Liturgia (Atalho) em todas as telas do lado direito (Imagem 1) */}
+      {/* Barra Lateral da Liturgia (exibe apenas o dia em uso) */}
       {currentTab !== 'liturgia' && (
         <LiturgiaSidebar
           onOpenLiturgiaFull={() => handleSelectTab('liturgia')}

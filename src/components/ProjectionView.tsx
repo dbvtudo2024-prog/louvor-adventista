@@ -391,19 +391,36 @@ export function ProjectionView({
   const isSorteio = song?.id === 'sorteio-projection' || song?.category === 'sorteio' || song?.collection_id === 'utilitarios';
 
   const sorteioData = useMemo(() => {
-    if (!isSorteio || !song) return { winner: '?', winners: [] as any[] };
+    if (!isSorteio || !song) return { winner: '?', winners: [] as any[], prizeImage: null, prizeTitle: '', isRolling: false };
     let winner = song.lyrics || '?';
     let winners: any[] = [];
+    let prizeImage: string | null = null;
+    let prizeTitle: string = '';
+    let isRolling = false;
     try {
       if (song.author && song.author.startsWith('{')) {
         const parsed = JSON.parse(song.author);
         if (parsed.winner !== undefined && parsed.winner !== null) winner = String(parsed.winner);
         if (Array.isArray(parsed.winners)) winners = parsed.winners;
+        if (parsed.prizeImage) prizeImage = parsed.prizeImage;
+        if (parsed.prizeTitle) prizeTitle = parsed.prizeTitle;
+        if (parsed.isRolling !== undefined) isRolling = Boolean(parsed.isRolling);
       }
     } catch (e) {}
 
-    return { winner, winners };
-  }, [isSorteio, song.lyrics, song.author]);
+    if (!prizeImage) {
+      try {
+        prizeImage = localStorage.getItem('sorteio_prize_image');
+      } catch (e) {}
+    }
+    if (!prizeTitle) {
+      try {
+        prizeTitle = localStorage.getItem('sorteio_prize_title') || '';
+      } catch (e) {}
+    }
+
+    return { winner, winners, prizeImage, prizeTitle, isRolling };
+  }, [isSorteio, song?.lyrics, song?.author]);
 
   return (
     <div 
@@ -491,6 +508,9 @@ export function ProjectionView({
             <SorteioProjectionScreen 
               winner={sorteioData.winner} 
               winnersList={sorteioData.winners}
+              prizeImage={sorteioData.prizeImage}
+              prizeTitle={sorteioData.prizeTitle}
+              isRolling={sorteioData.isRolling}
             />
           ) : (
             <AnimatePresence mode="wait">

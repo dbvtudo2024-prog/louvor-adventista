@@ -81,7 +81,7 @@ export function TopBar({
         {/* "Telas" Button */}
         <button
           onClick={onOpenTelas}
-          className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold tracking-wide transition-all active:scale-95 flex items-center gap-1 shadow-sm cursor-pointer"
+          className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold tracking-wide transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer"
           style={{
             color: accent.hex,
             borderColor: `${accent.hex}50`,
@@ -91,40 +91,7 @@ export function TopBar({
           title="Gerenciar Telas, Projetor e Conexão de TV"
         >
           <Monitor className="w-3.5 h-3.5" />
-          <span>Telas</span>
-        </button>
-
-        {/* Iniciar ou Fechar Projeção em Outra Tela */}
-        <button
-          onClick={onToggleProjection}
-          disabled={!isProjectionOpen && !canProject}
-          className={cn(
-            "px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none",
-            isProjectionOpen 
-              ? "bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 cursor-pointer active:scale-95" 
-              : !canProject
-                ? "bg-neutral-900/50 text-neutral-500 border border-neutral-800/60 cursor-not-allowed opacity-40 shadow-none pointer-events-none sm:pointer-events-auto"
-                : "bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/60 cursor-pointer active:scale-95"
-          )}
-          title={
-            isProjectionOpen 
-              ? "Fechar Projeção na outra tela" 
-              : !canProject 
-                ? "Selecione uma música para iniciar a projeção" 
-                : "Iniciar Projeção em outra tela"
-          }
-        >
-          <span className="relative flex h-2 w-2">
-            {isProjectionOpen && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            )}
-            <span 
-              className={cn("relative inline-flex rounded-full h-2 w-2", isProjectionOpen ? "bg-red-500" : canProject ? "bg-emerald-400" : "bg-neutral-600")}
-            />
-          </span>
-          <span className="text-[11px] sm:text-xs">
-            {isProjectionOpen ? 'Telão Aberto' : 'Projetar'}
-          </span>
+          <span className="hidden xs:inline sm:inline">Telas</span>
         </button>
       </div>
     </header>

@@ -9,16 +9,30 @@ import { broadcastToProjection } from '../utils/projectionSync';
 
 const STORAGE_KEY = 'adventist_liturgies_data';
 
-const DAYS_SHORT = [
-  { id: 'dom', label: 'Dom' },
-  { id: 'seg', label: 'Seg' },
-  { id: 'ter', label: 'Ter' },
-  { id: 'qua', label: 'Qua' },
-  { id: 'qui', label: 'Qui' },
-  { id: 'sex', label: 'Sex' },
-  { id: 'sab', label: 'Sáb' },
-  { id: 'avulsa', label: 'Av.' }
-];
+const getTodayDayId = (): string => {
+  const dayIndex = new Date().getDay();
+  const map: Record<number, string> = {
+    0: 'dom',
+    1: 'seg',
+    2: 'ter',
+    3: 'qua',
+    4: 'qui',
+    5: 'sex',
+    6: 'sab'
+  };
+  return map[dayIndex] || 'seg';
+};
+
+const DAY_NAMES: Record<string, string> = {
+  dom: 'Domingo',
+  seg: 'Segunda-feira',
+  ter: 'Terça-feira',
+  qua: 'Quarta-feira',
+  qui: 'Quinta-feira',
+  sex: 'Sexta-feira',
+  sab: 'Sábado',
+  avulsa: 'Programação Avulsa'
+};
 
 interface LiturgiaSidebarProps {
   onOpenLiturgiaFull: () => void;
@@ -34,7 +48,7 @@ export function LiturgiaSidebar({
   onToggleCollapse
 }: LiturgiaSidebarProps) {
   const { accent } = useTheme();
-  const [internalIsCollapsed, setInternalIsCollapsed] = useState(false);
+  const [internalIsCollapsed, setInternalIsCollapsed] = useState(true);
   
   const isCollapsed = controlledIsCollapsed !== undefined ? controlledIsCollapsed : internalIsCollapsed;
   const toggleCollapsed = () => {
@@ -44,7 +58,13 @@ export function LiturgiaSidebar({
       setInternalIsCollapsed(prev => !prev);
     }
   };
-  const [selectedDay, setSelectedDay] = useState<string>('sab');
+  const [selectedDay, setSelectedDay] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('adventist_active_liturgia_day');
+      if (saved) return saved;
+    } catch (e) {}
+    return getTodayDayId();
+  });
   const [liturgiesByDay, setLiturgiesByDay] = useState<Record<string, LiturgyCategory[]>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -73,6 +93,9 @@ export function LiturgiaSidebar({
         try {
           setLiturgiesByDay(JSON.parse(e.newValue));
         } catch (err) {}
+      }
+      if (e.key === 'adventist_active_liturgia_day' && e.newValue) {
+        setSelectedDay(e.newValue);
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -258,7 +281,7 @@ export function LiturgiaSidebar({
 
   return (
     <aside 
-      className="hidden md:flex flex-col fixed right-0 top-14 bottom-14 z-30 w-72 lg:w-80 bg-[#10131a]/95 backdrop-blur-md border-l border-neutral-800/90 shadow-2xl text-white select-none transition-all duration-300"
+      className="flex flex-col fixed right-0 top-14 bottom-14 z-30 w-72 sm:w-80 bg-[#10131a]/95 backdrop-blur-md border-l border-neutral-800/90 shadow-2xl text-white select-none transition-all duration-300"
     >
       {/* Header matching Image 1 */}
       <div className="px-4 py-3 border-b border-neutral-800/80 flex items-center justify-between bg-[#0e1017]/80">
@@ -296,22 +319,18 @@ export function LiturgiaSidebar({
         </div>
       </div>
 
-      {/* Day Selector Pill Strip */}
-      <div className="px-3 py-2 border-b border-neutral-800/60 flex items-center gap-1 overflow-x-auto custom-scrollbar bg-[#0b0d13]/60">
-        {DAYS_SHORT.map((d) => (
-          <button
-            key={d.id}
-            onClick={() => setSelectedDay(d.id)}
-            className={`px-2 py-1 rounded-md text-[11px] font-semibold tracking-wide transition-all shrink-0 ${
-              selectedDay === d.id
-                ? 'text-neutral-950 font-bold shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-            }`}
-            style={selectedDay === d.id ? { backgroundColor: accent.hex } : undefined}
-          >
-            {d.label}
-          </button>
-        ))}
+      {/* Day In Use - Exibe APENAS o dia que está sendo utilizado */}
+      <div className="px-4 py-2.5 border-b border-neutral-800/60 flex items-center justify-between bg-[#0b0d13]/60">
+        <div className="flex items-center gap-2 text-xs text-neutral-400">
+          <Calendar className="w-3.5 h-3.5" style={{ color: accent.hex }} />
+          <span>Dia em uso:</span>
+        </div>
+        <span 
+          className="px-2.5 py-1 rounded-lg text-xs font-bold text-neutral-950 shadow-sm"
+          style={{ backgroundColor: accent.hex }}
+        >
+          {DAY_NAMES[selectedDay] || 'Sábado'}
+        </span>
       </div>
 
       {/* Main Body */}

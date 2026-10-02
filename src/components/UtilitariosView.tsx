@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, Ticket, Edit2, ChevronRight, ChevronLeft, Play, Pause, 
   RotateCcw, Undo2, Monitor, Sparkles, X, Shuffle, Check, 
-  Hourglass, Dices, Presentation, Palette, Plus, Search, Pencil, FileText, Music
+  Hourglass, Dices, Presentation, Palette, Plus, Search, Pencil, FileText, Music,
+  Image as ImageIcon, Gift
 } from 'lucide-react';
 import { Song } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -158,6 +159,97 @@ export function UtilitariosView({
   // Histórico de sorteados - inicia zerado
   const [sortedWinners, setSortedWinners] = useState<SortedWinner[]>([]);
 
+  // Imagem do Prêmio / Sorteio para projetar junto
+  const [prizeImage, setPrizeImage] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('sorteio_prize_image');
+      if (saved) return saved;
+      const raw = localStorage.getItem('projection_sorteio_data');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.prizeImage) return parsed.prizeImage;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const [prizeTitle, setPrizeTitle] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('sorteio_prize_title');
+      if (saved) return saved;
+      const raw = localStorage.getItem('projection_sorteio_data');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.prizeTitle) return parsed.prizeTitle;
+      }
+    } catch (e) {}
+    return '';
+  });
+
+  const handleUploadPrizeImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setPrizeImage(dataUrl);
+        try {
+          localStorage.setItem('sorteio_prize_image', dataUrl);
+          const raw = localStorage.getItem('projection_sorteio_data');
+          const current = raw ? JSON.parse(raw) : {};
+          const updated = { ...current, prizeImage: dataUrl, prizeTitle };
+          localStorage.setItem('projection_sorteio_data', JSON.stringify(updated));
+          const currentTarget = localStorage.getItem('projection_active_song_id');
+          if (currentTarget === 'sorteio-projection') {
+            broadcastToProjection({
+              type: 'SORTEIO_UPDATE',
+              data: updated
+            });
+          }
+        } catch (err) {}
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePrizeImage = () => {
+    setPrizeImage(null);
+    try {
+      localStorage.removeItem('sorteio_prize_image');
+      const raw = localStorage.getItem('projection_sorteio_data');
+      const current = raw ? JSON.parse(raw) : {};
+      const updated = { ...current, prizeImage: null };
+      localStorage.setItem('projection_sorteio_data', JSON.stringify(updated));
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      if (currentTarget === 'sorteio-projection') {
+        broadcastToProjection({
+          type: 'SORTEIO_UPDATE',
+          data: updated
+        });
+      }
+    } catch (err) {}
+  };
+
+  const handlePrizeTitleChange = (val: string) => {
+    setPrizeTitle(val);
+    try {
+      localStorage.setItem('sorteio_prize_title', val);
+      const raw = localStorage.getItem('projection_sorteio_data');
+      const current = raw ? JSON.parse(raw) : {};
+      const updated = { ...current, prizeTitle: val, prizeImage };
+      localStorage.setItem('projection_sorteio_data', JSON.stringify(updated));
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      if (currentTarget === 'sorteio-projection') {
+        broadcastToProjection({
+          type: 'SORTEIO_UPDATE',
+          data: updated
+        });
+      }
+    } catch (err) {}
+  };
+
   // Vencedor atual no centro da roleta - inicia zerado (null)
   const [currentWinner, setCurrentWinner] = useState<string | number | null>(null);
   const [isRolling, setIsRolling] = useState(false);
@@ -203,7 +295,7 @@ export function UtilitariosView({
   const handleLimparHistorico = () => {
     setSortedWinners([]);
     setCurrentWinner(null);
-    const emptyPayload = { winner: '?', winners: [] };
+    const emptyPayload = { winner: '?', winners: [], prizeImage, prizeTitle, isRolling: false };
     const emptySong: Song = {
       id: 'sorteio-projection',
       collection_id: 'utilitarios',
@@ -214,13 +306,16 @@ export function UtilitariosView({
     };
     try {
       localStorage.setItem('projection_sorteio_data', JSON.stringify(emptyPayload));
-      localStorage.setItem('projection_current_song', JSON.stringify(emptySong));
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      if (currentTarget === 'sorteio-projection') {
+        localStorage.setItem('projection_current_song', JSON.stringify(emptySong));
+        broadcastToProjection({
+          type: 'SORTEIO_UPDATE',
+          song: emptySong,
+          data: emptyPayload
+        });
+      }
     } catch (e) {}
-    broadcastToProjection({
-      type: 'SORTEIO_UPDATE',
-      song: emptySong,
-      data: emptyPayload
-    });
   };
 
   const handleUndoWinner = (winnerId: string) => {
@@ -229,15 +324,21 @@ export function UtilitariosView({
     const nextWinner = updated.length > 0 ? updated[0].value : (currentWinner !== null ? currentWinner : '?');
     const payload = {
       winner: nextWinner,
-      winners: updated
+      winners: updated,
+      prizeImage,
+      prizeTitle,
+      isRolling: false
     };
     try {
       localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      if (currentTarget === 'sorteio-projection') {
+        broadcastToProjection({
+          type: 'SORTEIO_UPDATE',
+          data: payload
+        });
+      }
     } catch (e) {}
-    broadcastToProjection({
-      type: 'SORTEIO_UPDATE',
-      data: payload
-    });
   };
 
   // Sortear
@@ -260,7 +361,10 @@ export function UtilitariosView({
       // Sincroniza os números girando em tempo real com a tela de projeção
       const spinPayload = {
         winner: tempRand,
-        winners: sortedWinners
+        winners: sortedWinners,
+        prizeImage,
+        prizeTitle,
+        isRolling: true
       };
       const spinSong: Song = {
         id: 'sorteio-projection',
@@ -298,7 +402,10 @@ export function UtilitariosView({
         // Atualiza a tela de projeção automaticamente se estiver aberta
         const payload = {
           winner: finalChosen,
-          winners: updatedWinners
+          winners: updatedWinners,
+          prizeImage,
+          prizeTitle,
+          isRolling: false
         };
         const songContent: Song = {
           id: 'sorteio-projection',
@@ -327,14 +434,24 @@ export function UtilitariosView({
     }, 80);
   };
 
-  // Responde imediatamente a pedidos de sincronização da tela de projeção
+  // Responde a pedidos de sincronização da tela de projeção SOMENTE se o sorteio estiver ativamente projetado
   useEffect(() => {
     const unsubscribe = subscribeToProjection((msg) => {
       if (msg.type === 'REQUEST_SYNC') {
+        const currentTarget = localStorage.getItem('projection_active_song_id');
+        const activeType = localStorage.getItem('projection_active_type');
+        // Se a tela de projeção estiver exibindo relógio, música ou bíblia, NÃO envie sorteio!
+        if (currentTarget !== 'sorteio-projection' && activeType !== 'sorteio') {
+          return;
+        }
+
         const displayWinner = currentWinner !== null ? currentWinner : (sortedWinners.length > 0 ? sortedWinners[0].value : '?');
         const payload = {
           winner: displayWinner,
-          winners: sortedWinners
+          winners: sortedWinners,
+          prizeImage,
+          prizeTitle,
+          isRolling
         };
         const songContent: Song = {
           id: 'sorteio-projection',
@@ -357,7 +474,7 @@ export function UtilitariosView({
       }
     });
     return () => unsubscribe();
-  }, [currentWinner, sortedWinners]);
+  }, [currentWinner, sortedWinners, prizeImage, prizeTitle, isRolling]);
 
   const [projectedSuccessNotice, setProjectedSuccessNotice] = useState(false);
   const [isSorteioProjecting, setIsSorteioProjecting] = useState(() => {
@@ -384,7 +501,10 @@ export function UtilitariosView({
     const displayWinner = currentWinner !== null ? currentWinner : (sortedWinners.length > 0 ? sortedWinners[0].value : '?');
     const sorteioPayload = {
       winner: displayWinner,
-      winners: sortedWinners
+      winners: sortedWinners,
+      prizeImage,
+      prizeTitle,
+      isRolling
     };
 
     const songContent: Song = {
@@ -1096,25 +1216,30 @@ export function UtilitariosView({
                   <RandomInnerParticles count={20} accentColor={accent.hex} />
                 </div>
 
-                {/* Winner Display Inside Circle */}
+                {/* Winner Display Inside Circle - Número primeiro, palavra Vencedor DEPOIS (Imagem 1) */}
                 <div className="relative z-10 flex flex-col items-center justify-center text-center px-4">
-                  {currentWinner !== null && (
-                    <span 
-                      className="text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 sm:mb-2 drop-shadow"
-                      style={{ color: accent.hex }}
-                    >
-                      Vencedor!
-                    </span>
-                  )}
-
+                  {/* Número sorteado primeiro */}
                   <motion.span 
                     key={String(currentWinner)}
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="font-mono text-4xl sm:text-5xl md:text-6xl font-black text-[#38bdf8] drop-shadow-[0_0_25px_rgba(56,189,248,0.5)]"
+                    className="font-mono text-4xl sm:text-5xl md:text-6xl font-black text-[#38bdf8] drop-shadow-[0_0_25px_rgba(56,189,248,0.5)] leading-none"
                   >
                     {currentWinner !== null ? currentWinner : '—'}
                   </motion.span>
+
+                  {/* A palavra Vencedor aparece DEPOIS do número sorteado */}
+                  {!isRolling && currentWinner !== null && (
+                    <motion.span 
+                      initial={{ opacity: 0, y: 8, scale: 0.8 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ delay: 0.15, type: 'spring', stiffness: 240 }}
+                      className="text-[10px] sm:text-xs font-black uppercase tracking-widest mt-1.5 sm:mt-2 drop-shadow"
+                      style={{ color: accent.hex }}
+                    >
+                      Vencedor!
+                    </motion.span>
+                  )}
                 </div>
               </div>
 
@@ -1135,6 +1260,54 @@ export function UtilitariosView({
                 <span className="text-[10px] sm:text-xs text-neutral-400 font-medium">
                   {isRolling ? 'Sorteando...' : availableItems.length === 0 ? 'Adicione itens para sortear' : 'Pronto para iniciar o sorteio'}
                 </span>
+              </div>
+
+              {/* Prize Image Showcase & Uploader (Projetar Imagem Junto no Telão - Imagem 2) */}
+              <div className="mt-2 sm:mt-3 w-full max-w-sm flex flex-col items-center shrink-0">
+                {prizeImage ? (
+                  <div className="w-full bg-[#181a1e] border border-neutral-800 rounded-2xl p-2.5 flex items-center justify-between gap-3 shadow-md">
+                    <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-black/60 border border-neutral-700/80 shrink-0 flex items-center justify-center">
+                      <img src={prizeImage} alt="Prêmio" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Gift className="w-3 h-3 text-amber-400" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                          Prêmio do Sorteio
+                        </span>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Título do prêmio (ex: Cesta, Bíblia)..."
+                        value={prizeTitle}
+                        onChange={(e) => handlePrizeTitleChange(e.target.value)}
+                        className="w-full bg-[#111316] border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-neutral-600 truncate"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <label 
+                        className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white cursor-pointer transition-colors"
+                        title="Trocar imagem"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <input type="file" accept="image/*" onChange={handleUploadPrizeImage} className="hidden" />
+                      </label>
+                      <button
+                        onClick={handleRemovePrizeImage}
+                        className="p-1.5 rounded-lg bg-neutral-800/80 hover:bg-rose-950 text-neutral-400 hover:text-rose-400 transition-colors cursor-pointer"
+                        title="Remover imagem"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#16181c] hover:bg-[#202329] border border-dashed border-neutral-700/80 hover:border-neutral-500 text-xs font-semibold text-neutral-300 hover:text-white cursor-pointer transition-all active:scale-95 shadow-sm group">
+                    <ImageIcon className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                    <span>Adicionar Imagem do Prêmio (Projeta Junto)</span>
+                    <input type="file" accept="image/*" onChange={handleUploadPrizeImage} className="hidden" />
+                  </label>
+                )}
               </div>
             </div>
 

@@ -20,7 +20,6 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>('serif');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showDragHelper, setShowDragHelper] = useState(true);
   const [churchLiveConfig, setChurchLiveConfig] = useState<ChurchScreenConfig | null>(null);
   const [churchLiveLogo, setChurchLiveLogo] = useState<string>(() => {
     return localStorage.getItem('church_logo_url') || getChurchScreenConfig().logoUrl || '';
@@ -29,11 +28,6 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   const mountedAtRef = useRef<number>(Date.now());
   
   const channelRef = useRef<BroadcastChannel | null>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowDragHelper(false), 8000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Hydrate church logo and config from IndexedDB and local storage on mount
   useEffect(() => {
@@ -264,28 +258,52 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     return false;
   }, [isRealSong, isBible, isSorteio, song, isChurchClockParam]);
 
-  const [sorteioLive, setSorteioLive] = useState<{ winner: string; winners: any[] }>(() => {
+  const [sorteioLive, setSorteioLive] = useState<{
+    winner: string;
+    winners: any[];
+    prizeImage?: string | null;
+    prizeTitle?: string;
+    isRolling?: boolean;
+  }>(() => {
     try {
       const raw = localStorage.getItem('projection_sorteio_data');
+      const savedPrizeImg = localStorage.getItem('sorteio_prize_image');
+      const savedPrizeTitle = localStorage.getItem('sorteio_prize_title');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed) {
           return {
             winner: parsed.winner !== undefined ? String(parsed.winner) : '?',
-            winners: Array.isArray(parsed.winners) ? parsed.winners : []
+            winners: Array.isArray(parsed.winners) ? parsed.winners : [],
+            prizeImage: parsed.prizeImage !== undefined ? parsed.prizeImage : savedPrizeImg,
+            prizeTitle: parsed.prizeTitle !== undefined ? parsed.prizeTitle : (savedPrizeTitle || ''),
+            isRolling: Boolean(parsed.isRolling)
           };
         }
       }
+      return {
+        winner: '?',
+        winners: [],
+        prizeImage: savedPrizeImg,
+        prizeTitle: savedPrizeTitle || '',
+        isRolling: false
+      };
     } catch (e) {}
     return {
       winner: '?',
-      winners: []
+      winners: [],
+      prizeImage: null,
+      prizeTitle: '',
+      isRolling: false
     };
   });
 
   const sorteioData = useMemo(() => {
     let winner = sorteioLive.winner;
     let winners: any[] = Array.isArray(sorteioLive.winners) ? sorteioLive.winners : [];
+    let prizeImage = sorteioLive.prizeImage;
+    let prizeTitle = sorteioLive.prizeTitle;
+    let isRolling = Boolean(sorteioLive.isRolling);
 
     if (song?.author && song.author.startsWith('{')) {
       try {
@@ -295,6 +313,15 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         }
         if (Array.isArray(parsed.winners) && parsed.winners.length > 0 && winners.length === 0) {
           winners = parsed.winners;
+        }
+        if (parsed.prizeImage !== undefined) {
+          prizeImage = parsed.prizeImage;
+        }
+        if (parsed.prizeTitle !== undefined) {
+          prizeTitle = parsed.prizeTitle;
+        }
+        if (parsed.isRolling !== undefined) {
+          isRolling = Boolean(parsed.isRolling);
         }
       } catch (e) {}
     }
@@ -314,11 +341,28 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           if (Array.isArray(parsed.winners) && winners.length === 0) {
             winners = parsed.winners;
           }
+          if (parsed.prizeImage && !prizeImage) {
+            prizeImage = parsed.prizeImage;
+          }
+          if (parsed.prizeTitle && !prizeTitle) {
+            prizeTitle = parsed.prizeTitle;
+          }
         }
       } catch (e) {}
     }
 
-    return { winner: winner || '?', winners };
+    if (!prizeImage) {
+      try {
+        prizeImage = localStorage.getItem('sorteio_prize_image');
+      } catch (e) {}
+    }
+    if (!prizeTitle) {
+      try {
+        prizeTitle = localStorage.getItem('sorteio_prize_title') || '';
+      } catch (e) {}
+    }
+
+    return { winner: winner || '?', winners, prizeImage, prizeTitle, isRolling };
   }, [sorteioLive, song?.lyrics, song?.author, song?.category, song?.id]);
 
   useEffect(() => {
@@ -531,10 +575,14 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
                 if (Array.isArray(parsed.winners)) winList = parsed.winners;
               } catch (e) {}
             }
-            setSorteioLive({
+            setSorteioLive(prev => ({
+              ...prev,
               winner: String(winVal),
-              winners: winList
-            });
+              winners: winList,
+              prizeImage: msg.data?.prizeImage !== undefined ? msg.data.prizeImage : prev.prizeImage,
+              prizeTitle: msg.data?.prizeTitle !== undefined ? msg.data.prizeTitle : prev.prizeTitle,
+              isRolling: Boolean(msg.data?.isRolling)
+            }));
           }
         }
         if (msg.data?.logoUrl) {
@@ -561,19 +609,26 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         if (msg.data) {
           const finalWinner = String(msg.data.winner ?? '?');
           const finalWinners = Array.isArray(msg.data.winners) ? msg.data.winners : [];
-          setSorteioLive({
+          setSorteioLive(prev => ({
             winner: finalWinner,
-            winners: finalWinners
-          });
-          const sorteioSong: Song = {
-            id: 'sorteio-projection',
-            collection_id: 'utilitarios',
-            category: 'sorteio',
-            title: 'Sorteio',
-            lyrics: finalWinner,
-            author: JSON.stringify(msg.data)
-          };
-          setSong(sorteioSong);
+            winners: finalWinners,
+            prizeImage: msg.data.prizeImage !== undefined ? msg.data.prizeImage : (prev.prizeImage || localStorage.getItem('sorteio_prize_image')),
+            prizeTitle: msg.data.prizeTitle !== undefined ? msg.data.prizeTitle : (prev.prizeTitle || localStorage.getItem('sorteio_prize_title') || ''),
+            isRolling: Boolean(msg.data.isRolling)
+          }));
+          const currentTarget = localStorage.getItem('projection_active_song_id');
+          const currentType = localStorage.getItem('projection_active_type');
+          if (currentTarget === 'sorteio-projection' || currentType === 'sorteio') {
+            const sorteioSong: Song = {
+              id: 'sorteio-projection',
+              collection_id: 'utilitarios',
+              category: 'sorteio',
+              title: 'Sorteio',
+              lyrics: finalWinner,
+              author: JSON.stringify(msg.data)
+            };
+            setSong(sorteioSong);
+          }
         }
       } else if (msg.type === 'SYNC_FONT' && msg.fontFamily) {
         setFontFamily(msg.fontFamily);
@@ -760,6 +815,9 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         <SorteioProjectionScreen 
           winner={sorteioData.winner} 
           winnersList={sorteioData.winners} 
+          prizeImage={sorteioData.prizeImage}
+          prizeTitle={sorteioData.prizeTitle}
+          isRolling={sorteioData.isRolling}
         />
       </div>
     );
@@ -875,19 +933,6 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
       onDoubleClick={toggleFullscreen}
       className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
     >
-      {showDragHelper && (
-        <div 
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowDragHelper(false);
-          }}
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 bg-neutral-900/90 border border-neutral-700/80 rounded-full text-xs text-neutral-300 shadow-2xl flex items-center gap-3 backdrop-blur-md transition-all cursor-pointer hover:border-neutral-500"
-          title="Clique para ocultar este aviso"
-        >
-          <span>📺 Projeção: Arraste para o Projetor / TV (HDMI) e aperte F11</span>
-          <span className="text-neutral-500 text-xs">✕</span>
-        </div>
-      )}
       <ChurchClockProjectionScreen 
         churchName={churchName} 
         districtName={districtName} 

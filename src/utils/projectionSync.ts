@@ -331,11 +331,31 @@ export async function detectSecondaryScreen(): Promise<SecondaryScreenInfo> {
     };
   }
 
+  // 4. Saved target screen preferences if previously detected/configured
+  try {
+    const savedLeft = localStorage.getItem('adventist_target_screen_left');
+    if (savedLeft !== null) {
+      const leftVal = parseInt(savedLeft, 10);
+      if (!isNaN(leftVal) && leftVal !== 0) {
+        return {
+          hasSecondary: true,
+          left: leftVal,
+          top: parseInt(localStorage.getItem('adventist_target_screen_top') || '0', 10) || 0,
+          width: parseInt(localStorage.getItem('adventist_target_screen_width') || '1920', 10) || 1920,
+          height: parseInt(localStorage.getItem('adventist_target_screen_height') || '1080', 10) || 1080
+        };
+      }
+    }
+  } catch (e) {}
+
+  // 5. Default to the secondary monitor offset (e.g. width of primary screen)
+  // so that the projection window never opens at (0,0) on top of the operator!
+  const screenOffset = window.screen.availWidth ?? window.screen.width ?? 1920;
   return {
     hasSecondary: false,
-    left: 0,
+    left: screenOffset,
     top: 0,
-    width: window.screen.availWidth ?? 1920,
+    width: screenOffset,
     height: window.screen.availHeight ?? 1080
   };
 }
@@ -498,7 +518,7 @@ export async function openSecondaryProjectionWindow(
     }
   } catch (e) {}
 
-  if (win && screenInfo.hasSecondary) {
+  if (win) {
     try {
       win.moveTo(left, top);
       win.resizeTo(width, height);

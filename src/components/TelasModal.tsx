@@ -81,19 +81,33 @@ export function TelasModal({
           // @ts-ignore
           const screenDetails = await (window.getScreenDetails ? window.getScreenDetails() : window.getScreens());
           if (screenDetails && screenDetails.screens && screenDetails.screens.length > 0) {
-            const detected: DetectedScreen[] = screenDetails.screens.map((s: any, idx: number) => ({
-              id: `screen-${idx + 1}`,
-              name: s.isPrimary ? `Tela 1 (Principal - ${s.label || 'Integrada'})` : `Tela ${idx + 1} (HDMI / Projetor - ${s.label || 'Externa'})`,
-              width: s.width || s.availWidth || 1920,
-              height: s.height || s.availHeight || 1080,
-              isPrimary: !!s.isPrimary,
-              left: s.left || 0,
-              top: s.top || 0
-            }));
+            const detected: DetectedScreen[] = screenDetails.screens.map((s: any, idx: number) => {
+              const sLeft = s.availLeft !== undefined ? s.availLeft : (s.left ?? (idx === 0 ? 0 : 1920));
+              const sTop = s.availTop !== undefined ? s.availTop : (s.top ?? 0);
+              const sWidth = s.availWidth || s.width || 1920;
+              const sHeight = s.availHeight || s.height || 1080;
+              return {
+                id: `screen-${idx + 1}`,
+                name: s.isPrimary ? `Tela 1 (Principal - ${s.label || 'Integrada'})` : `Tela ${idx + 1} (HDMI / Projetor - ${s.label || 'Externa'})`,
+                width: sWidth,
+                height: sHeight,
+                isPrimary: !!s.isPrimary,
+                left: sLeft,
+                top: sTop
+              };
+            });
             setScreens(detected);
             // Default select the secondary screen if available
             const secondary = detected.find(s => !s.isPrimary);
-            if (secondary) setSelectedScreenId(secondary.id);
+            if (secondary) {
+              setSelectedScreenId(secondary.id);
+              try {
+                localStorage.setItem('adventist_target_screen_left', String(secondary.left));
+                localStorage.setItem('adventist_target_screen_top', String(secondary.top));
+                localStorage.setItem('adventist_target_screen_width', String(secondary.width));
+                localStorage.setItem('adventist_target_screen_height', String(secondary.height));
+              } catch (e) {}
+            }
             setIsDetecting(false);
             return;
           }

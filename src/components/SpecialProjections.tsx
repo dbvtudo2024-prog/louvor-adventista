@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Gift } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { ChurchScreenConfig, DEFAULT_CHURCH_CONFIG } from '../types';
 import { broadcastToProjection, subscribeToProjection } from '../utils/projectionSync';
@@ -152,9 +152,18 @@ export function BibleProjectionScreen({ verseText, reference }: BibleProjectionP
 interface SorteioProjectionProps {
   winner: string | number;
   winnersList?: Array<{ id?: string; order?: number; value: string | number }>;
+  prizeImage?: string | null;
+  prizeTitle?: string;
+  isRolling?: boolean;
 }
 
-export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjectionProps) {
+export function SorteioProjectionScreen({ 
+  winner, 
+  winnersList, 
+  prizeImage, 
+  prizeTitle, 
+  isRolling 
+}: SorteioProjectionProps) {
   const { accent } = useTheme();
 
   const validList = useMemo(() => {
@@ -174,86 +183,151 @@ export function SorteioProjectionScreen({ winner, winnersList }: SorteioProjecti
   }, [winnersList]);
 
   const isBlankState = !winner || winner === '?' || winner === '—';
+  const hasPrizeImage = Boolean(prizeImage);
 
   return (
-    <div className="w-full h-full bg-black flex flex-col justify-between items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none">
+    <div className="w-full h-full bg-black flex flex-col justify-between items-center p-4 sm:p-8 md:p-12 overflow-hidden relative select-none">
       {/* Top spacing */}
-      <div className="h-4 sm:h-8" />
+      <div className="h-2 sm:h-4" />
 
-      {/* Center: Glowing Sphere & Spinning Orbit Rings with Discrete Particles */}
-      <div className="flex-1 flex items-center justify-center relative w-full my-auto">
-        {/* Outer Continuous Rotating Dashed Orbit Ring */}
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 35, ease: "linear" }}
-          className="w-80 h-80 sm:w-[410px] sm:h-[410px] md:w-[480px] md:h-[480px] rounded-full border-2 border-dashed flex items-center justify-center pointer-events-none absolute"
-          style={{ borderColor: `${accent.hex}35` }}
-        />
+      {/* Main Center Stage: Split if prizeImage exists, or Centered */}
+      <div className="flex-1 w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-12 my-auto px-4 z-10 min-h-0">
+        
+        {/* If Prize Image exists, show the Prize Card on the left */}
+        {hasPrizeImage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, x: -30 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 22 }}
+            className="flex-1 max-w-md w-full flex flex-col items-center justify-center p-4 sm:p-6 rounded-3xl bg-neutral-900/80 border backdrop-blur-xl shadow-2xl relative overflow-hidden"
+            style={{ 
+              borderColor: `${accent.hex}50`,
+              boxShadow: `0 0 50px ${accent.hex}25`
+            }}
+          >
+            {/* Badge Prêmio */}
+            <div 
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider mb-4 border shadow-sm"
+              style={{ 
+                backgroundColor: `${accent.hex}20`,
+                borderColor: `${accent.hex}50`,
+                color: accent.hex
+              }}
+            >
+              <Gift className="w-4 h-4" />
+              <span>Prêmio do Sorteio</span>
+            </div>
 
-        {/* Counter-rotating segmented dotted ring */}
-        <motion.div 
-          animate={{ rotate: -360 }}
-          transition={{ repeat: Infinity, duration: 24, ease: "linear" }}
-          className="w-72 h-72 sm:w-[360px] sm:h-[360px] md:w-[430px] md:h-[430px] rounded-full border border-dotted flex items-center justify-center pointer-events-none absolute"
-          style={{ borderColor: `${accent.hex}50` }}
-        />
+            {/* Prize Image display */}
+            <div className="relative w-full max-h-[300px] sm:max-h-[360px] flex items-center justify-center rounded-2xl overflow-hidden bg-black/60 border border-neutral-800 p-2 shadow-inner">
+              <img 
+                src={prizeImage!} 
+                alt="Prêmio do Sorteio" 
+                className="max-h-[280px] sm:max-h-[340px] w-auto max-w-full object-contain rounded-xl drop-shadow-2xl transition-transform duration-500 hover:scale-105"
+              />
+            </div>
 
-        {/* Inner rotating accent arc ring */}
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
-          className="w-68 h-68 sm:w-[340px] sm:h-[340px] md:w-[405px] md:h-[405px] rounded-full border border-t-2 border-r-transparent border-b-transparent border-l-transparent pointer-events-none absolute"
-          style={{ borderTopColor: accent.hex }}
-        />
+            {/* Prize Title / Description if provided */}
+            {prizeTitle && (
+              <motion.h4 
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-base sm:text-xl font-bold text-white tracking-wide mt-4 text-center drop-shadow"
+              >
+                {prizeTitle}
+              </motion.h4>
+            )}
+          </motion.div>
+        )}
 
-        {/* Translucent Glowing Dark Sphere */}
-        <motion.div
-          initial={{ scale: 0.85, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 220, damping: 20 }}
-          className="absolute w-64 h-64 sm:w-[320px] sm:h-[320px] md:w-[380px] md:h-[380px] rounded-full bg-gradient-to-b from-[#1c1c20] via-[#141416] to-[#0c0c0e] border flex flex-col items-center justify-center p-6 backdrop-blur-md overflow-hidden relative"
-          style={{ 
-            borderColor: `${accent.hex}60`, 
-            boxShadow: `0 0 100px ${accent.hex}35` 
-          }}
-        >
-          {/* Subtle sparkles texture */}
-          <div 
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: `radial-gradient(circle at 50% 35%, ${accent.hex}25, transparent 70%)` }}
+        {/* Roulette & Number Arena */}
+        <div className={`flex items-center justify-center relative ${hasPrizeImage ? 'flex-1' : 'w-full my-auto'}`}>
+          {/* Outer Continuous Rotating Dashed Orbit Ring */}
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 35, ease: "linear" }}
+            className={`${hasPrizeImage ? 'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96' : 'w-80 h-80 sm:w-[410px] sm:h-[410px] md:w-[480px] md:h-[480px]'} rounded-full border-2 border-dashed flex items-center justify-center pointer-events-none absolute`}
+            style={{ borderColor: `${accent.hex}35` }}
           />
 
-          {/* Loose random drifting particles inside circle */}
-          <RandomInnerParticles count={28} accentColor={accent.hex} />
+          {/* Counter-rotating segmented dotted ring */}
+          <motion.div 
+            animate={{ rotate: -360 }}
+            transition={{ repeat: Infinity, duration: 24, ease: "linear" }}
+            className={`${hasPrizeImage ? 'w-64 h-64 sm:w-72 sm:h-72 md:w-84 md:h-84' : 'w-72 h-72 sm:w-[360px] sm:h-[360px] md:w-[430px] md:h-[430px]'} rounded-full border border-dotted flex items-center justify-center pointer-events-none absolute`}
+            style={{ borderColor: `${accent.hex}50` }}
+          />
 
-          <div className="absolute top-8 right-12 opacity-50 z-10">
-            <Sparkles className="w-4 h-4 animate-pulse" style={{ color: accent.hex }} />
-          </div>
-          <div className="absolute bottom-12 left-10 opacity-40 z-10">
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ color: accent.hex }} />
-          </div>
+          {/* Inner rotating accent arc ring */}
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
+            className={`${hasPrizeImage ? 'w-60 h-60 sm:w-68 sm:h-68 md:w-80 md:h-80' : 'w-68 h-68 sm:w-[340px] sm:h-[340px] md:w-[405px] md:h-[405px]'} rounded-full border border-t-2 border-r-transparent border-b-transparent border-l-transparent pointer-events-none absolute`}
+            style={{ borderTopColor: accent.hex }}
+          />
 
-          {/* Apenas a palavra VENCEDOR e o número sorteado (Sem redundância) */}
-          <div className="flex flex-col items-center justify-center relative z-10 text-center">
-            <span 
-              className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mb-2"
-              style={{ color: isBlankState ? accent.hex : '#f59e0b' }}
-            >
-              {isBlankState ? 'SORTEIO' : 'VENCEDOR'}
-            </span>
+          {/* Translucent Glowing Dark Sphere */}
+          <motion.div
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 220, damping: 20 }}
+            className={`relative ${hasPrizeImage ? 'w-56 h-56 sm:w-64 sm:h-64 md:w-76 md:h-76' : 'w-64 h-64 sm:w-[320px] sm:h-[320px] md:w-[380px] md:h-[380px]'} rounded-full bg-gradient-to-b from-[#1c1c20] via-[#141416] to-[#0c0c0e] border flex flex-col items-center justify-center p-6 backdrop-blur-md overflow-hidden`}
+            style={{ 
+              borderColor: `${accent.hex}60`, 
+              boxShadow: `0 0 100px ${accent.hex}35` 
+            }}
+          >
+            {/* Subtle sparkles texture */}
+            <div 
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: `radial-gradient(circle at 50% 35%, ${accent.hex}25, transparent 70%)` }}
+            />
 
-            {/* Winner Number in Neon Electric Cyan/Blue with Glow */}
-            <motion.span 
-              key={String(winner)}
-              initial={{ scale: 0.7, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 18 }}
-              className="text-[#0ea5e9] text-7xl sm:text-8xl md:text-9xl font-black tracking-tight leading-none drop-shadow-[0_0_40px_rgba(14,165,233,0.9)]"
-            >
-              {winner !== undefined && winner !== null && winner !== '' ? winner : '?'}
-            </motion.span>
-          </div>
-        </motion.div>
+            {/* Loose random drifting particles inside circle */}
+            <RandomInnerParticles count={24} accentColor={accent.hex} />
+
+            <div className="absolute top-8 right-12 opacity-50 z-10">
+              <Sparkles className="w-4 h-4 animate-pulse" style={{ color: accent.hex }} />
+            </div>
+            <div className="absolute bottom-12 left-10 opacity-40 z-10">
+              <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ color: accent.hex }} />
+            </div>
+
+            {/* Número sorteado primeiro, e a palavra VENCEDOR DEPOIS do número (Imagem 1) */}
+            <div className="flex flex-col items-center justify-center relative z-10 text-center">
+              {/* Winner Number in Neon Electric Cyan/Blue with Glow */}
+              <motion.span 
+                key={String(winner)}
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                className={`text-[#0ea5e9] ${hasPrizeImage ? 'text-6xl sm:text-7xl md:text-8xl' : 'text-7xl sm:text-8xl md:text-9xl'} font-black tracking-tight leading-none drop-shadow-[0_0_40px_rgba(14,165,233,0.9)]`}
+              >
+                {winner !== undefined && winner !== null && winner !== '' ? winner : '?'}
+              </motion.span>
+
+              {/* A palavra VENCEDOR aparece DEPOIS do número sorteado */}
+              {!isRolling && !isBlankState ? (
+                <motion.span 
+                  initial={{ opacity: 0, scale: 0.7, y: 12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ delay: 0.25, duration: 0.4, type: "spring", stiffness: 260 }}
+                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-[0_0_15px_rgba(245,158,11,0.6)] mt-2 sm:mt-3"
+                  style={{ color: '#f59e0b' }}
+                >
+                  VENCEDOR!
+                </motion.span>
+              ) : isBlankState ? (
+                <span 
+                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mt-2 sm:mt-3 opacity-60"
+                  style={{ color: accent.hex }}
+                >
+                  SORTEIO
+                </span>
+              ) : null}
+            </div>
+          </motion.div>
+        </div>
       </div>
 
       {/* Bottom Bar: Apenas os números já sorteados */}
