@@ -149,12 +149,18 @@ export function BibleProjectionScreen({ verseText, reference }: BibleProjectionP
   );
 }
 
+import { 
+  SorteioConfig, 
+  getSorteioConfig 
+} from './SorteioPersonalizacaoModal';
+
 interface SorteioProjectionProps {
   winner: string | number;
   winnersList?: Array<{ id?: string; order?: number; value: string | number }>;
   prizeImage?: string | null;
   prizeTitle?: string;
   isRolling?: boolean;
+  customConfig?: SorteioConfig | null;
 }
 
 export function SorteioProjectionScreen({ 
@@ -162,9 +168,41 @@ export function SorteioProjectionScreen({
   winnersList, 
   prizeImage, 
   prizeTitle, 
-  isRolling 
+  isRolling,
+  customConfig
 }: SorteioProjectionProps) {
   const { accent } = useTheme();
+  const [liveConfig, setLiveConfig] = useState<SorteioConfig>(() => {
+    return customConfig || getSorteioConfig();
+  });
+
+  useEffect(() => {
+    if (customConfig) {
+      setLiveConfig(customConfig);
+    }
+  }, [customConfig]);
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'sorteio_projection_config' && e.newValue) {
+        try {
+          setLiveConfig(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  const formatWinner = (val: any) => {
+    if (val === undefined || val === null || val === '') return '?';
+    const str = String(val);
+    if (liveConfig.textCase === 'uppercase') return str.toUpperCase();
+    if (liveConfig.textCase === 'lowercase') return str.toLowerCase();
+    return str;
+  };
+
+  const sizeRatio = (liveConfig.fontSize || 14) / 14;
 
   const validList = useMemo(() => {
     if (winnersList && winnersList.length > 0) {
@@ -186,7 +224,10 @@ export function SorteioProjectionScreen({
   const hasPrizeImage = Boolean(prizeImage);
 
   return (
-    <div className="w-full h-full bg-black flex flex-col justify-between items-center p-4 sm:p-8 md:p-12 overflow-hidden relative select-none">
+    <div 
+      className="w-full h-full flex flex-col justify-between items-center p-4 sm:p-8 md:p-12 overflow-hidden relative select-none transition-colors duration-500"
+      style={{ backgroundColor: liveConfig.bgColor }}
+    >
       {/* Top spacing */}
       <div className="h-2 sm:h-4" />
 
@@ -293,38 +334,49 @@ export function SorteioProjectionScreen({
               <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ color: accent.hex }} />
             </div>
 
-            {/* Número sorteado primeiro, e a palavra VENCEDOR DEPOIS do número (Imagem 1) */}
+            {/* Número sorteado primeiro, e a palavra VENCEDOR LOGO APÓS o número */}
             <div className="flex flex-col items-center justify-center relative z-10 text-center">
-              {/* Winner Number in Neon Electric Cyan/Blue with Glow */}
+              {/* Winner Number in Selected Text Color with Glow and Custom Size */}
               <motion.span 
                 key={String(winner)}
                 initial={{ scale: 0.7, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 260, damping: 18 }}
-                className={`text-[#0ea5e9] ${hasPrizeImage ? 'text-6xl sm:text-7xl md:text-8xl' : 'text-7xl sm:text-8xl md:text-9xl'} font-black tracking-tight leading-none drop-shadow-[0_0_40px_rgba(14,165,233,0.9)]`}
+                className="font-black tracking-tight leading-none transition-all duration-300 drop-shadow-2xl"
+                style={{
+                  color: liveConfig.textColor,
+                  fontSize: `clamp(3rem, ${Math.round(11 * sizeRatio)}vw, ${Math.round(8.5 * sizeRatio)}rem)`,
+                  filter: `drop-shadow(0 0 35px ${liveConfig.textColor}99)`
+                }}
               >
-                {winner !== undefined && winner !== null && winner !== '' ? winner : '?'}
+                {formatWinner(winner)}
               </motion.span>
 
-              {/* A palavra VENCEDOR aparece DEPOIS do número sorteado */}
+              {/* A palavra VENCEDOR aparece LOGO APÓS o número sorteado */}
               {!isRolling && !isBlankState ? (
                 <motion.span 
                   initial={{ opacity: 0, scale: 0.7, y: 12 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ delay: 0.25, duration: 0.4, type: "spring", stiffness: 260 }}
-                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-[0_0_15px_rgba(245,158,11,0.6)] mt-2 sm:mt-3"
+                  transition={{ delay: 0.2, duration: 0.4, type: "spring", stiffness: 260 }}
+                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-[0_0_15px_rgba(245,158,11,0.6)] mt-3 sm:mt-4"
                   style={{ color: '#f59e0b' }}
                 >
                   VENCEDOR!
                 </motion.span>
               ) : isBlankState ? (
                 <span 
-                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mt-2 sm:mt-3 opacity-60"
+                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mt-3 opacity-60"
                   style={{ color: accent.hex }}
                 >
                   SORTEIO
                 </span>
-              ) : null}
+              ) : (
+                <span 
+                  className="font-black text-xs sm:text-sm md:text-base tracking-[0.35em] uppercase drop-shadow-md mt-3 text-cyan-400 animate-pulse"
+                >
+                  SORTEANDO...
+                </span>
+              )}
             </div>
           </motion.div>
         </div>
@@ -350,7 +402,7 @@ export function SorteioProjectionScreen({
                 return (
                   <div
                     key={item.id || index}
-                    className={`min-w-10 h-10 px-3.5 rounded-xl font-mono text-sm sm:text-base font-bold transition-all flex items-center justify-center shrink-0 ${
+                    className={`min-w-10 h-10 px-3.5 rounded-xl font-mono text-sm sm:text-base font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
                       isActive
                         ? 'border-2 shadow-lg ring-1 ring-amber-400/30 font-black'
                         : 'bg-neutral-900 border border-neutral-800 text-neutral-200'
@@ -362,7 +414,12 @@ export function SorteioProjectionScreen({
                       boxShadow: '0 0 16px rgba(245, 158, 11, 0.45)'
                     } : undefined}
                   >
-                    {item.value}
+                    <span>{formatWinner(item.value)}</span>
+                    {isActive && (
+                      <span className="text-[10px] font-sans font-black text-amber-400 uppercase tracking-wider">
+                        Vencedor
+                      </span>
+                    )}
                   </div>
                 );
               })

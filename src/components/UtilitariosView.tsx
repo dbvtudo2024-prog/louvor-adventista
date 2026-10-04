@@ -11,6 +11,12 @@ import { useTheme } from '../context/ThemeContext';
 import { broadcastToProjection, openSecondaryProjectionWindow, subscribeToProjection, isProjectionWindowOpen, closeProjectionWindow } from '../utils/projectionSync';
 import { SlideEditorModal } from './SlideEditorModal';
 import { RandomInnerParticles } from './SpecialProjections';
+import { 
+  SorteioPersonalizacaoModal, 
+  SorteioConfig, 
+  getSorteioConfig, 
+  saveSorteioConfig 
+} from './SorteioPersonalizacaoModal';
 
 interface UtilitariosViewProps {
   onProjectContent: (song: Song) => void;
@@ -254,6 +260,18 @@ export function UtilitariosView({
   const [currentWinner, setCurrentWinner] = useState<string | number | null>(null);
   const [isRolling, setIsRolling] = useState(false);
 
+  // Personalização da Projeção do Sorteio (Modal)
+  const [isPersonalizacaoOpen, setIsPersonalizacaoOpen] = useState(false);
+  const [sorteioConfig, setSorteioConfig] = useState<SorteioConfig>(getSorteioConfig);
+
+  const formatWinnerDisplay = (val: string | number | null | undefined) => {
+    if (val === null || val === undefined || val === '') return '—';
+    const str = String(val);
+    if (sorteioConfig.textCase === 'uppercase') return str.toUpperCase();
+    if (sorteioConfig.textCase === 'lowercase') return str.toLowerCase();
+    return str;
+  };
+
   // Modo Nomes: input para adicionar
   const [nameInput, setNameInput] = useState('');
 
@@ -353,18 +371,23 @@ export function UtilitariosView({
 
     setIsRolling(true);
     let counter = 0;
+    const speedMs = sorteioConfig.speed === 'rapido' ? 45 : sorteioConfig.speed === 'lento' ? 140 : 80;
+    const maxTicks = sorteioConfig.speed === 'rapido' ? 24 : sorteioConfig.speed === 'lento' ? 18 : 22;
+
     const interval = setInterval(() => {
       const tempRand = eligible[Math.floor(Math.random() * eligible.length)];
       setCurrentWinner(tempRand);
       counter++;
 
-      // Sincroniza os números girando em tempo real com a tela de projeção
+      // Sincroniza os números girando em tempo real com a tela de projeção APENAS se o sorteio estiver ativamente projetado
+      const targetIsSorteio = isSorteioProjecting || localStorage.getItem('projection_active_song_id') === 'sorteio-projection';
       const spinPayload = {
         winner: tempRand,
         winners: sortedWinners,
         prizeImage,
         prizeTitle,
-        isRolling: true
+        isRolling: true,
+        config: sorteioConfig
       };
       const spinSong: Song = {
         id: 'sorteio-projection',
@@ -374,18 +397,21 @@ export function UtilitariosView({
         lyrics: String(tempRand),
         author: JSON.stringify(spinPayload)
       };
-      try {
-        localStorage.setItem('projection_active_type', 'sorteio');
-        localStorage.setItem('projection_sorteio_data', JSON.stringify(spinPayload));
-        localStorage.setItem('projection_current_song', JSON.stringify(spinSong));
-      } catch (e) {}
-      broadcastToProjection({
-        type: 'SORTEIO_UPDATE',
-        song: spinSong,
-        data: spinPayload
-      });
 
-      if (counter > 22) {
+      if (targetIsSorteio) {
+        try {
+          localStorage.setItem('projection_active_type', 'sorteio');
+          localStorage.setItem('projection_sorteio_data', JSON.stringify(spinPayload));
+          localStorage.setItem('projection_current_song', JSON.stringify(spinSong));
+        } catch (e) {}
+        broadcastToProjection({
+          type: 'SORTEIO_UPDATE',
+          song: spinSong,
+          data: spinPayload
+        });
+      }
+
+      if (counter > maxTicks) {
         clearInterval(interval);
         const finalChosen = eligible[Math.floor(Math.random() * eligible.length)];
         setCurrentWinner(finalChosen);
@@ -399,13 +425,14 @@ export function UtilitariosView({
         const updatedWinners = [newWinner, ...sortedWinners];
         setSortedWinners(updatedWinners);
 
-        // Atualiza a tela de projeção automaticamente se estiver aberta
+        // Atualiza a tela de projeção automaticamente APENAS se o sorteio estiver projetado
         const payload = {
           winner: finalChosen,
           winners: updatedWinners,
           prizeImage,
           prizeTitle,
-          isRolling: false
+          isRolling: false,
+          config: sorteioConfig
         };
         const songContent: Song = {
           id: 'sorteio-projection',
@@ -415,24 +442,36 @@ export function UtilitariosView({
           lyrics: String(finalChosen),
           author: JSON.stringify(payload)
         };
-        try {
-          localStorage.setItem('projection_active_type', 'sorteio');
-          localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
-          localStorage.setItem('projection_current_song', JSON.stringify(songContent));
-        } catch (e) {}
-        broadcastToProjection({
-          type: 'SORTEIO_UPDATE',
-          song: songContent,
-          data: payload
-        });
-        broadcastToProjection({
-          type: 'PROJECT_SONG',
-          song: songContent,
-          data: payload
-        });
+
+        if (targetIsSorteio) {
+          try {
+            localStorage.setItem('projection_active_type', 'sorteio');
+            localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+            localStorage.setItem('projection_current_song', JSON.stringify(songContent));
+          } catch (e) {}
+          broadcastToProjection({
+            type: 'SORTEIO_UPDATE',
+            song: songContent,
+            data: payload
+          });
+        }
       }
-    }, 80);
+    }, speedMs);
   };
+
+  const [projectedSuccessNotice, setProjectedSuccessNotice] = useState(false);
+  const [isSorteioProjecting, setIsSorteioProjecting] = useState(() => {
+    return isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'sorteio-projection';
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const open = isProjectionWindowOpen();
+      const currentTarget = localStorage.getItem('projection_active_song_id');
+      setIsSorteioProjecting(open && currentTarget === 'sorteio-projection');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Responde a pedidos de sincronização da tela de projeção SOMENTE se o sorteio estiver ativamente projetado
   useEffect(() => {
@@ -440,8 +479,8 @@ export function UtilitariosView({
       if (msg.type === 'REQUEST_SYNC') {
         const currentTarget = localStorage.getItem('projection_active_song_id');
         const activeType = localStorage.getItem('projection_active_type');
-        // Se a tela de projeção estiver exibindo relógio, música ou bíblia, NÃO envie sorteio!
-        if (currentTarget !== 'sorteio-projection' && activeType !== 'sorteio') {
+        // Se a tela de projeção NÃO estiver ativamente configurada para sorteio, NUNCA envie sorteio!
+        if (currentTarget !== 'sorteio-projection' || activeType !== 'sorteio' || !isSorteioProjecting) {
           return;
         }
 
@@ -474,21 +513,7 @@ export function UtilitariosView({
       }
     });
     return () => unsubscribe();
-  }, [currentWinner, sortedWinners, prizeImage, prizeTitle, isRolling]);
-
-  const [projectedSuccessNotice, setProjectedSuccessNotice] = useState(false);
-  const [isSorteioProjecting, setIsSorteioProjecting] = useState(() => {
-    return isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'sorteio-projection';
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const open = isProjectionWindowOpen();
-      const currentTarget = localStorage.getItem('projection_active_song_id');
-      setIsSorteioProjecting(open && currentTarget === 'sorteio-projection');
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
+  }, [currentWinner, sortedWinners, prizeImage, prizeTitle, isRolling, isSorteioProjecting]);
 
   const handleProjectSorteio = () => {
     if (isSorteioProjecting || (isProjectionWindowOpen() && localStorage.getItem('projection_active_song_id') === 'sorteio-projection')) {
@@ -1065,14 +1090,29 @@ export function UtilitariosView({
               </div>
             </div>
 
-            {/* Resetar Tudo (Imagem 2) */}
-            <button
-              onClick={handleResetTudo}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#1a1b1d] border border-neutral-800 hover:border-neutral-700 text-xs font-bold text-neutral-300 hover:text-white flex items-center gap-1.5 sm:gap-2 transition-all active:scale-95 shadow-sm"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
-              <span>Resetar Tudo</span>
-            </button>
+            {/* Botões de Ação: Personalizar & Resetar Tudo */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPersonalizacaoOpen(true)}
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#1a1b1d] border border-neutral-800 hover:border-[#2dd4bf]/60 text-xs font-bold text-neutral-300 hover:text-[#2dd4bf] flex items-center gap-1.5 sm:gap-2 transition-all active:scale-95 shadow-sm cursor-pointer"
+                title="Personalização da Projeção"
+              >
+                <Palette className="w-3.5 h-3.5 text-[#2dd4bf]" />
+                <span className="hidden xs:inline">Personalizar</span>
+              </button>
+
+              {/* Resetar Tudo (Imagem 2) */}
+              <button
+                type="button"
+                onClick={handleResetTudo}
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#1a1b1d] border border-neutral-800 hover:border-neutral-700 text-xs font-bold text-neutral-300 hover:text-white flex items-center gap-1.5 sm:gap-2 transition-all active:scale-95 shadow-sm cursor-pointer"
+                title="Resetar todos os sorteios"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+                <span>Resetar Tudo</span>
+              </button>
+            </div>
           </div>
 
           {/* 3 COLUMNS LAYOUT (Imagem 2) */}
@@ -1216,20 +1256,24 @@ export function UtilitariosView({
                   <RandomInnerParticles count={20} accentColor={accent.hex} />
                 </div>
 
-                {/* Winner Display Inside Circle - Número primeiro, palavra Vencedor DEPOIS (Imagem 1) */}
+                {/* Winner Display Inside Circle - Número primeiro, palavra Vencedor LOGO APÓS */}
                 <div className="relative z-10 flex flex-col items-center justify-center text-center px-4">
-                  {/* Número sorteado primeiro */}
+                  {/* Número sorteado */}
                   <motion.span 
                     key={String(currentWinner)}
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="font-mono text-4xl sm:text-5xl md:text-6xl font-black text-[#38bdf8] drop-shadow-[0_0_25px_rgba(56,189,248,0.5)] leading-none"
+                    className="font-mono text-4xl sm:text-5xl md:text-6xl font-black leading-none transition-colors duration-300"
+                    style={{
+                      color: sorteioConfig.textColor,
+                      filter: `drop-shadow(0 0 25px ${sorteioConfig.textColor}80)`
+                    }}
                   >
-                    {currentWinner !== null ? currentWinner : '—'}
+                    {formatWinnerDisplay(currentWinner)}
                   </motion.span>
 
-                  {/* A palavra Vencedor aparece DEPOIS do número sorteado */}
-                  {!isRolling && currentWinner !== null && (
+                  {/* A palavra Vencedor aparece LOGO APÓS o número sorteado */}
+                  {!isRolling && currentWinner !== null ? (
                     <motion.span 
                       initial={{ opacity: 0, y: 8, scale: 0.8 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1239,7 +1283,11 @@ export function UtilitariosView({
                     >
                       Vencedor!
                     </motion.span>
-                  )}
+                  ) : isRolling ? (
+                    <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest mt-1.5 sm:mt-2 text-cyan-400 animate-pulse">
+                      Sorteando...
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -1338,11 +1386,11 @@ export function UtilitariosView({
                         <span className="w-5 h-5 rounded-full bg-[#0ea5e9] text-[#082f49] font-bold font-mono text-[10px] flex items-center justify-center shrink-0">
                           {winner.order}
                         </span>
-                        <span className="text-[10px] uppercase font-bold text-amber-400">
-                          Vencedor:
-                        </span>
                         <span className="font-mono font-bold text-white truncate text-xs sm:text-sm">
                           {winner.value}
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-amber-400 shrink-0">
+                          Vencedor
                         </span>
                       </div>
 
@@ -1596,6 +1644,33 @@ export function UtilitariosView({
           )}
         </div>
       )}
+
+      {/* MODAL DE PERSONALIZAÇÃO DA PROJEÇÃO DO SORTEIO */}
+      <SorteioPersonalizacaoModal
+        isOpen={isPersonalizacaoOpen}
+        onClose={() => setIsPersonalizacaoOpen(false)}
+        currentConfig={sorteioConfig}
+        onApply={(newConfig) => {
+          setSorteioConfig(newConfig);
+          saveSorteioConfig(newConfig);
+          // Broadcast live update immediately to telão
+          const payload = {
+            winner: currentWinner,
+            winners: sortedWinners,
+            prizeImage,
+            prizeTitle,
+            isRolling,
+            config: newConfig
+          };
+          try {
+            localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+          } catch (e) {}
+          broadcastToProjection({
+            type: 'SORTEIO_UPDATE',
+            data: payload
+          });
+        }}
+      />
     </div>
   );
 }

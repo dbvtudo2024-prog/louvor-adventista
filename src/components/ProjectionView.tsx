@@ -388,7 +388,7 @@ export function ProjectionView({
   }, [currentPhraseIndex]);
 
   const isBible = song?.category === 'Bíblia' || song?.collection_id === 'biblia' || song?.id?.startsWith('bible-');
-  const isSorteio = song?.id === 'sorteio-projection' || song?.category === 'sorteio' || song?.collection_id === 'utilitarios';
+  const isSorteio = (song?.id === 'sorteio-projection' || song?.category === 'sorteio' || (song?.collection_id === 'utilitarios' && song?.title === 'Sorteio')) && song?.id !== 'church-clock-projection' && song?.category !== 'church-clock';
 
   const sorteioData = useMemo(() => {
     if (!isSorteio || !song) return { winner: '?', winners: [] as any[], prizeImage: null, prizeTitle: '', isRolling: false };

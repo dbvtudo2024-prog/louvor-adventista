@@ -3,6 +3,8 @@ import { Minus, Plus, Monitor, ExternalLink, Menu, WifiOff, ChevronLeft } from '
 import { cn } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 
+import { ProgramLogo } from './ProgramLogo';
+
 interface TopBarProps {
   zoomLevel: number;
   onZoomIn: () => void;
@@ -36,18 +38,21 @@ export function TopBar({
         isDarkMode ? "bg-[#101216]/95 text-white border-neutral-800/80" : "bg-white/95 text-neutral-900 border-neutral-200"
       )}
     >
-      {/* Left: Clean Branding */}
-      <div className="flex items-baseline gap-1 select-none">
-        <span className="font-bold text-base sm:text-xl tracking-tight">Louvor</span>
-        <span 
-          className="font-extrabold text-base sm:text-xl tracking-tight transition-colors duration-300"
-          style={{ 
-            color: accent.hex,
-            filter: `drop-shadow(0 0 10px ${accent.hex}60)`
-          }}
-        >
-          Adventista
-        </span>
+      {/* Left: Clean Branding with Program Logo */}
+      <div className="flex items-center gap-2.5 select-none">
+        <ProgramLogo className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm border border-amber-500/40 shrink-0" />
+        <div className="flex items-baseline gap-1 select-none">
+          <span className="font-bold text-base sm:text-xl tracking-tight">Louvor</span>
+          <span 
+            className="font-extrabold text-base sm:text-xl tracking-tight transition-colors duration-300"
+            style={{ 
+              color: accent.hex,
+              filter: `drop-shadow(0 0 10px ${accent.hex}60)`
+            }}
+          >
+            Adventista
+          </span>
+        </div>
       </div>
 
       {/* Right Controls: Zoom (desktop only), Telas, and Iniciar Projeção */}

@@ -6,8 +6,9 @@ import { getChurchScreenConfig } from './SpecialProjections';
 import { getChurchLogoFromDb } from '../utils/churchDb';
 import { broadcastToProjection, openSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen } from '../utils/projectionSync';
 import { Song } from '../types';
+import { ProgramLogo } from './ProgramLogo';
 
-function IasdDefaultLogo({ className = "h-14 sm:h-16" }: { className?: string }) {
+export function IasdDefaultLogo({ className = "h-14 sm:h-16" }: { className?: string }) {
   return (
     <div className={`flex flex-col items-center justify-center select-none ${className}`}>
       <svg viewBox="0 0 100 70" className="w-16 h-11 sm:w-20 sm:h-14 fill-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
@@ -282,7 +283,7 @@ export function HomeHero() {
               className="h-16 xs:h-20 sm:h-24 md:h-28 object-contain drop-shadow-xl max-w-[280px] transition-all" 
             />
           ) : (
-            <IasdDefaultLogo />
+            <ProgramLogo className="w-16 h-16 xs:w-20 xs:h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl shadow-2xl border border-amber-500/40" />
           )}
         </div>
 

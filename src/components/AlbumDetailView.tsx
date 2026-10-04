@@ -147,11 +147,11 @@ export function AlbumDetailView({
       {/* 3. SONGS TABLE (Image 2) */}
       <div className="space-y-3 pt-2">
         {/* Table Column Headers: # | TÍTULO / COLETÂNEA | DURAÇÃO | AÇÕES */}
-        <div className="flex items-center px-4 py-2 text-[11px] font-black uppercase tracking-wider text-neutral-500 select-none">
-          <span className="w-10 text-center">#</span>
-          <span className="flex-1 ml-4 sm:ml-5">TÍTULO / COLETÂNEA</span>
+        <div className="flex items-center px-3 sm:px-4 py-2 text-[11px] font-black uppercase tracking-wider text-neutral-500 select-none">
+          <span className="w-8 sm:w-10 text-center">#</span>
+          <span className="flex-1 ml-2 sm:ml-5">TÍTULO / COLETÂNEA</span>
           <span className="w-20 text-center hidden sm:block">DURAÇÃO</span>
-          <span className="w-40 sm:w-56 text-right pr-2">AÇÕES</span>
+          <span className="w-auto sm:w-56 text-right pr-2">AÇÕES</span>
         </div>
 
         {/* Rows */}
@@ -166,25 +166,25 @@ export function AlbumDetailView({
                 key={song.id}
                 onClick={() => onPlaySong(song)}
                 className={cn(
-                  "group flex items-center justify-between p-3 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none",
+                  "group flex items-center justify-between p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none gap-1 sm:gap-2",
                   isThisPlaying 
                     ? "bg-[#1c1d22] border-[#3f414a] shadow-lg ring-1 ring-amber-500/30" 
                     : "bg-[#16171a] hover:bg-[#1d1f24] border-neutral-800/80 hover:border-neutral-700"
                 )}
               >
                 {/* 1. Left: Number or Orange Play Indicator (Image 2) */}
-                <div className="w-10 flex items-center justify-center shrink-0">
+                <div className="w-7 sm:w-10 flex items-center justify-center shrink-0">
                   {isThisPlaying ? (
-                    <Play className="w-4 h-4 text-[#d97736] fill-transparent stroke-[2.5]" />
+                    <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d97736] fill-transparent stroke-[2.5]" />
                   ) : (
-                    <span className="text-sm font-bold text-neutral-400 group-hover:text-white font-mono">
+                    <span className="text-xs sm:text-sm font-bold text-neutral-400 group-hover:text-white font-mono">
                       {songNumber}
                     </span>
                   )}
                 </div>
 
                 {/* 2. Album Cover Thumbnail (Image 2) */}
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-neutral-900 border border-neutral-800 overflow-hidden shrink-0 ml-2 sm:ml-3 flex items-center justify-center shadow-inner">
+                <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-neutral-900 border border-neutral-800 overflow-hidden shrink-0 ml-1 sm:ml-3 flex items-center justify-center shadow-inner">
                   {song.cover_url || coverUrl ? (
                     <img
                       src={song.cover_url || coverUrl}
@@ -193,16 +193,16 @@ export function AlbumDetailView({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <Disc className="w-5 h-5 text-neutral-600" />
+                    <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-neutral-600" />
                   )}
                 </div>
 
-                {/* 3. Title & Coletânea Column */}
-                <div className="flex-1 min-w-0 ml-3 sm:ml-4">
-                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-[#d97736] transition-colors truncate">
+                {/* 3. Title & Coletânea Column (Guaranteed wide space without overlap) */}
+                <div className="flex-1 min-w-0 ml-2 sm:ml-4 pr-1 overflow-hidden">
+                  <h3 className="text-xs sm:text-base font-bold text-white group-hover:text-[#d97736] transition-colors truncate">
                     {song.title}
                   </h3>
-                  <p className="text-xs text-neutral-400 truncate">
+                  <p className="text-[11px] sm:text-xs text-neutral-400 truncate">
                     {song.album_name || albumName}
                   </p>
                 </div>
@@ -214,8 +214,8 @@ export function AlbumDetailView({
                   </span>
                 </div>
 
-                {/* 5. AÇÕES (Image 2) */}
-                <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 pr-1 sm:pr-2">
+                {/* 5. AÇÕES: Compactas no celular (Apenas Play e Liturgia) e completas no desktop */}
+                <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 pr-0.5 sm:pr-2">
                   {/* Action 1: Add to Liturgy */}
                   <button
                     type="button"
@@ -223,7 +223,7 @@ export function AlbumDetailView({
                       e.stopPropagation();
                       if (onAddToLiturgy) onAddToLiturgy(song);
                     }}
-                    className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                    className="p-1 sm:p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
                     title="Adicionar à Liturgia"
                   >
                     <ListPlus className="w-4 h-4" />
@@ -236,58 +236,57 @@ export function AlbumDetailView({
                       e.stopPropagation();
                       onPlaySong(song);
                     }}
-                    className="w-8 h-8 rounded-full border border-neutral-700 bg-neutral-800/80 hover:bg-[#d97736] hover:border-[#d97736] text-neutral-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-neutral-700 bg-neutral-800/80 hover:bg-[#d97736] hover:border-[#d97736] text-neutral-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
                     title="Abrir e Projetar Música (Tela do Utilizador)"
                   >
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                    <Play className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-current ml-0.5" />
                   </button>
 
-                  {/* Action 3: Piano Keys / Chords (Image 2) */}
+                  {/* Action 3: Piano Keys / Chords (Desktop/Tablet) */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Opens slide editor or chords
                       onOpenSlideEditor(song);
                     }}
-                    className="w-8 h-8 rounded-lg border border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                    className="hidden sm:flex w-8 h-8 rounded-lg border border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400 hover:text-white items-center justify-center transition-colors cursor-pointer"
                     title="Cifras / Partitura"
                   >
                     <span className="text-xs font-mono">🎹</span>
                   </button>
 
-                  {/* Action 4: Mute / Audio Toggle (Image 2) */}
+                  {/* Action 4: Mute / Audio Toggle (Desktop/Tablet) */}
                   <button
                     type="button"
                     onClick={(e) => toggleMute(song.id, e)}
-                    className="w-8 h-8 rounded-lg border border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                    className="hidden sm:flex w-8 h-8 rounded-lg border border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400 hover:text-white items-center justify-center transition-colors cursor-pointer"
                     title={isMuted ? "Áudio desativado" : "Áudio ativado"}
                   >
                     {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-neutral-400" />}
                   </button>
 
-                  {/* Action 5: Green Checkmark Badge (Image 2) */}
+                  {/* Action 5: Green Checkmark Badge (Desktop) */}
                   <div 
-                    className="w-6 h-6 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shadow-sm"
+                    className="hidden md:flex w-6 h-6 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 items-center justify-center shadow-sm"
                     title="Música pronta / Sincronizada"
                   >
                     <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                   </div>
 
-                  {/* Action 6: Edit Slides Button (Image 1 Integration) */}
+                  {/* Action 6: Edit Slides Button (Desktop/Tablet) */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onOpenSlideEditor(song);
                     }}
-                    className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                    className="hidden sm:flex p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
                     title="Editar Slides de Música (Imagem 1)"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
 
-                  {/* Action 7: Delete / Trash Icon (shown on active or hover) */}
+                  {/* Action 7: Delete / Trash Icon (Desktop/Tablet) */}
                   {onDeleteSong && (
                     <button
                       type="button"
@@ -296,7 +295,7 @@ export function AlbumDetailView({
                         onDeleteSong(song.id);
                       }}
                       className={cn(
-                        "p-1.5 rounded-lg transition-colors cursor-pointer text-neutral-500 hover:text-red-400 hover:bg-red-500/10",
+                        "hidden sm:flex p-1.5 rounded-lg transition-colors cursor-pointer text-neutral-500 hover:text-red-400 hover:bg-red-500/10",
                         isThisPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                       )}
                       title="Excluir música"

@@ -46,13 +46,14 @@ import { SlideEditorModal } from './components/SlideEditorModal';
 import { AlbumDetailView } from './components/AlbumDetailView';
 import { TopBar } from './components/TopBar';
 import { BottomDock, TabType } from './components/BottomDock';
-import { HomeHero } from './components/HomeHero';
+import { HomeHero, IasdDefaultLogo } from './components/HomeHero';
 import { TelasModal } from './components/TelasModal';
 import { LiturgiaView } from './components/LiturgiaView';
 import { BibliaView } from './components/BibliaView';
 import { UtilitariosView } from './components/UtilitariosView';
 import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { MusicEmblem } from './components/MusicEmblem';
+import { ProgramLogo } from './components/ProgramLogo';
 import { useTheme } from './context/ThemeContext';
 import { AtmosphericBackground } from './components/AtmosphericBackground';
 import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected, isMobileDevice } from './utils/projectionSync';
@@ -126,6 +127,25 @@ const ID_MAPPING: Record<string, string> = {
   'infantil': 'abcdef01-2345-4789-abcd-ef0123456789'
 };
 
+const sortCollections = (cols: Collection[]): Collection[] => {
+  const getOrderIndex = (name: string) => {
+    const n = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (n.includes('hinario')) return 0;
+    if (n.includes('jovens') || n.includes('cd') || n.includes('ja')) return 1;
+    if (n.includes('coletanea') || n.includes('divers')) return 2;
+    if (n.includes('doxologia')) return 3;
+    if (n.includes('infantil') || n.includes('crianca')) return 4;
+    return 99;
+  };
+
+  return [...cols].sort((a, b) => {
+    const indexA = getOrderIndex(a.name);
+    const indexB = getOrderIndex(b.name);
+    if (indexA === indexB) return a.name.localeCompare(b.name);
+    return indexA - indexB;
+  });
+};
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -136,8 +156,8 @@ export default function App() {
 
 function AppContent() {
   const [view, setView] = useState<'home' | 'collection' | 'song' | 'favorites' | 'admin' | 'liturgia' | 'biblia' | 'utilitarios' | 'configuracoes'>('home');
-  const [collections, setCollections] = useState<Collection[]>(MOCK_COLLECTIONS);
-  const [songs, setSongs] = useState<Song[]>(MOCK_SONGS);
+  const [collections, setCollections] = useState<Collection[]>(() => sortCollections(MOCK_COLLECTIONS));
+  const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -251,7 +271,7 @@ function AppContent() {
   const handlePlaySong = async (songToPlay: Song) => {
     setSelectedSong(songToPlay);
     setIsPlaying(true);
-    setIsProjecting(false);
+    setIsProjecting(true);
     setIsProjectionMinimized(false);
 
     try {
@@ -693,13 +713,7 @@ function AppContent() {
         return 99;
       };
 
-      const sortedCollections = Array.from(collectionsMap.values()).sort((a, b) => {
-        const indexA = getOrderIndex(a.name);
-        const indexB = getOrderIndex(b.name);
-        if (indexA === indexB) return a.name.localeCompare(b.name);
-        return indexA - indexB;
-      });
-
+      const sortedCollections = sortCollections(Array.from(collectionsMap.values()));
       setCollections(sortedCollections);
 
       const { data: sngs, error: sngsError } = await supabase
@@ -710,7 +724,7 @@ function AppContent() {
 
       const songsMap = new Map<string, Song>();
 
-      // 1. Add DB songs first (highest priority)
+      // 1. Add DB songs (highest priority) - strictly only DB songs
       if (sngs && sngs.length > 0) {
         sngs.forEach((song: any) => {
           const mappedCollectionId = ID_MAPPING[song.collection_id] || song.collection_id || sortedCollections[0]?.id;
@@ -733,49 +747,13 @@ function AppContent() {
             title: song.title || 'Sem título'
           });
         });
-        // Atualiza coleções se alguma nova foi adicionada
-        setCollections(Array.from(collectionsMap.values()));
+        // Atualiza coleções se alguma nova foi adicionada mantendo a ordem correta
+        setCollections(sortCollections(Array.from(collectionsMap.values())));
+        // Somente as músicas vindas do banco de dados
+        setSongs(Array.from(songsMap.values()));
+      } else {
+        setSongs([]);
       }
-
-      // Helper to find collection id by keyword
-      const findColId = (keyword: string) => {
-        const found = sortedCollections.find(c => c.name.toLowerCase().includes(keyword.toLowerCase()));
-        return found?.id;
-      };
-
-      const hinarioId = findColId('hinário');
-      const jovensId = findColId('jovens') || findColId('ja');
-      const coletaneasId = findColId('coletânea') || findColId('diversas');
-      const infantisId = findColId('infantil');
-      const doxologiaId = findColId('doxologia');
-
-      // 2. Add mock songs and map them to the proper loaded collection IDs so no collection is ever empty
-      MOCK_SONGS.forEach(mockSong => {
-        let targetColId = mockSong.collection_id;
-        if (mockSong.id.startsWith('ha-') && hinarioId) {
-          targetColId = hinarioId;
-        } else if ((mockSong.id.startsWith('tpe-') || mockSong.id.startsWith('ja-')) && jovensId) {
-          targetColId = jovensId;
-        } else if (mockSong.id.startsWith('col-') && coletaneasId) {
-          targetColId = coletaneasId;
-        } else if (mockSong.id.startsWith('inf-') && infantisId) {
-          targetColId = infantisId;
-        } else if (mockSong.id.startsWith('dox-') && doxologiaId) {
-          targetColId = doxologiaId;
-        }
-
-        // Avoid duplicate by title and collection
-        const exists = Array.from(songsMap.values()).some(
-          s => s.id === mockSong.id || (s.title.toLowerCase() === mockSong.title.toLowerCase() && s.collection_id === targetColId)
-        );
-
-        if (!exists) {
-          songsMap.set(mockSong.id, { ...mockSong, collection_id: targetColId });
-        }
-      });
-
-      const uniqueSongs = Array.from(songsMap.values());
-      setSongs(uniqueSongs);
 
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
@@ -1219,13 +1197,17 @@ function AppContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121214] text-white p-6 select-none relative overflow-hidden">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0d0e12] text-white p-6 select-none relative overflow-hidden">
         <AtmosphericBackground />
-        <div className="mb-8 z-10">
-          <MusicEmblem size={120} />
+        
+        {/* Logo Oficial do Programa */}
+        <div className="mb-6 z-10 flex flex-col items-center justify-center text-center">
+          <ProgramLogo size={135} showText={true} />
         </div>
-        <div className="flex flex-col items-center gap-3 z-10">
-          <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent.hex }} />
+
+        {/* Loading Indicator */}
+        <div className="flex flex-col items-center gap-3 z-10 mt-3">
+          <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 animate-spin" style={{ color: accent.hex }} />
           <p className="text-neutral-300 font-sans text-sm tracking-wide">Carregando louvores...</p>
         </div>
       </div>
@@ -1341,7 +1323,7 @@ function AppContent() {
                           filteredSongs.map((song) => (
                             <div
                               key={song.id}
-                              onClick={() => navigateTo('song', { song })}
+                              onClick={() => handlePlaySong(song)}
                               className="w-full flex items-center gap-4 p-3.5 bg-neutral-900/80 hover:bg-neutral-800/90 rounded-2xl border border-neutral-800 text-left transition-all group cursor-pointer"
                             >
                               <div 
@@ -1390,7 +1372,7 @@ function AppContent() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {collections.map((collection) => {
+                      {sortCollections(collections).map((collection) => {
                         const Icon = ICON_MAP[collection.icon] || Music;
                         return (
                           <button
@@ -1544,7 +1526,7 @@ function AppContent() {
                       <div
                         key={song.id}
                         onClick={() => {
-                          navigateTo('song', { song });
+                          handlePlaySong(song);
                         }}
                         className="w-full flex items-center gap-4 p-4 bg-neutral-900/80 hover:bg-neutral-800 rounded-2xl border border-neutral-800 transition-all text-left group cursor-pointer"
                       >
@@ -1828,7 +1810,7 @@ function AppContent() {
             >
               <LiturgiaView
                 songs={songs}
-                onSelectSong={(song) => navigateTo('song', { song })}
+                onSelectSong={(song) => handlePlaySong(song)}
                 onProjectSong={(song) => {
                   handlePlaySong(song);
                 }}
@@ -2449,6 +2431,15 @@ function AppContent() {
               setIsProjectionMinimized(false);
               audio.currentTime = 0;
               closeProjectionWindow();
+              if (view === 'song') {
+                if (selectedCollection) {
+                  setView('collection');
+                } else {
+                  setView('home');
+                  setCurrentTab('midia');
+                }
+              }
+              setSelectedSong(null);
             }}
             audioElement={audio}
             remoteRoomId={remoteRoomId}
@@ -2469,6 +2460,15 @@ function AppContent() {
               setIsProjectionMinimized(false);
               audio.currentTime = 0;
               closeProjectionWindow();
+              if (view === 'song') {
+                if (selectedCollection) {
+                  setView('collection');
+                } else {
+                  setView('home');
+                  setCurrentTab('midia');
+                }
+              }
+              setSelectedSong(null);
             }}
             audioElement={audio}
           />

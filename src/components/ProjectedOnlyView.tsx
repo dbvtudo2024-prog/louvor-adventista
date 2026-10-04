@@ -304,6 +304,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     let prizeImage = sorteioLive.prizeImage;
     let prizeTitle = sorteioLive.prizeTitle;
     let isRolling = Boolean(sorteioLive.isRolling);
+    let config = (sorteioLive as any).config || null;
 
     if (song?.author && song.author.startsWith('{')) {
       try {
@@ -322,6 +323,9 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         }
         if (parsed.isRolling !== undefined) {
           isRolling = Boolean(parsed.isRolling);
+        }
+        if (parsed.config !== undefined) {
+          config = parsed.config;
         }
       } catch (e) {}
     }
@@ -347,6 +351,9 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           if (parsed.prizeTitle && !prizeTitle) {
             prizeTitle = parsed.prizeTitle;
           }
+          if (parsed.config && !config) {
+            config = parsed.config;
+          }
         }
       } catch (e) {}
     }
@@ -362,7 +369,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
       } catch (e) {}
     }
 
-    return { winner: winner || '?', winners, prizeImage, prizeTitle, isRolling };
+    return { winner: winner || '?', winners, prizeImage, prizeTitle, isRolling, config };
   }, [sorteioLive, song?.lyrics, song?.author, song?.category, song?.id]);
 
   useEffect(() => {
@@ -483,7 +490,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           lyrics: win,
           author: JSON.stringify({ winner: win, winners: winList })
         });
-      } else {
+      } else if (typeof window !== 'undefined' && localStorage.getItem('projection_active_type') === 'sorteio' && targetSongId === 'sorteio-projection') {
         const sorteioRaw = localStorage.getItem('projection_sorteio_data');
         if (sorteioRaw && !initialSong && !song) {
           try {
@@ -818,6 +825,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
           prizeImage={sorteioData.prizeImage}
           prizeTitle={sorteioData.prizeTitle}
           isRolling={sorteioData.isRolling}
+          customConfig={sorteioData.config}
         />
       </div>
     );
