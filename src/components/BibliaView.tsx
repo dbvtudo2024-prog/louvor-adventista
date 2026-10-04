@@ -13,6 +13,7 @@ import {
 } from '../utils/projectionSync';
 import { saveBibleToDB, loadBibleFromDB } from '../utils/bibleStorage';
 import { parseBibleCSV } from '../utils/bibleCsvParser';
+import { splitBibleVerse } from '../utils/bibleSplitter';
 
 export interface BookInfo {
   abbr: string;
@@ -176,6 +177,15 @@ interface BibliaViewProps {
 export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onCloseProjection }: BibliaViewProps) {
   const { accent, isDarkMode } = useTheme();
   const [version, setVersion] = useState('Almeida Revista e Atualizada (ARA)');
+
+  const versionAbbr = useMemo(() => {
+    if (version.includes('ARA')) return 'ARA';
+    if (version.includes('NVI')) return 'NVI';
+    if (version.includes('ARC')) return 'ARC';
+    if (version.includes('NTLH')) return 'NTLH';
+    return 'ARA';
+  }, [version]);
+
   const [testamentFilter, setTestamentFilter] = useState<'AT' | 'NT'>('AT');
   const [selectedBook, setSelectedBook] = useState<BookInfo>(BIBLE_BOOKS[0]);
   const [selectedChapter, setSelectedChapter] = useState<number>(1);
@@ -185,7 +195,8 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
   const [searchGlobalQuery, setSearchGlobalQuery] = useState('');
   const [verseSearchQuery, setVerseSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
-  const [mobileTab, setMobileTab] = useState<'nav' | 'verses'>('nav');
+  const [mobileStep, setMobileStep] = useState<'books' | 'chapters' | 'verses'>('books');
+  const [currentBiblePartIndex, setCurrentBiblePartIndex] = useState(0);
 
   // Estados da Bíblia Completa nativa (ARA/NVI) e importada pelo usuário
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -434,12 +445,13 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
     setSelectedBook(b);
     setSelectedChapter(1);
     setSelectedVerseIndex(null);
+    setMobileStep('chapters');
   };
 
   const handleSelectChapter = (ch: number) => {
     setSelectedChapter(ch);
     setSelectedVerseIndex(null);
-    setMobileTab('verses');
+    setMobileStep('verses');
   };
 
   const handlePrevChapter = () => {
@@ -456,7 +468,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
     }
   };
 
-  const handleProjectSelected = (vIdx: number | null) => {
+  const handleProjectSelected = (vIdx: number | null, startPartIndex = 0) => {
     if (vIdx === null) return;
     const text = rawVerses[vIdx] || '';
     const ref = `${selectedBook.name.toUpperCase()} ${selectedChapter}:${vIdx + 1} (${versionAbbr})`;
@@ -474,15 +486,84 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
       localStorage.setItem('projection_active_song_id', verseSong.id);
       localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
       localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
+      localStorage.setItem('projection_current_index', String(startPartIndex));
     } catch (e) {}
     setIsInternalBibleProjecting(true);
+    setCurrentBiblePartIndex(startPartIndex);
     broadcastToProjection({
       type: 'PROJECT_SONG',
       song: verseSong,
-      index: 0
+      index: startPartIndex
+    });
+    broadcastToProjection({
+      type: 'SYNC_INDEX',
+      index: startPartIndex
     });
     onProjectVerse(verseSong);
   };
+
+  const handleSelectBiblePart = (partIdx: number) => {
+    setCurrentBiblePartIndex(partIdx);
+    try {
+      localStorage.setItem('projection_current_index', String(partIdx));
+      if (selectedVerseIndex !== null) {
+        localStorage.setItem('projection_active_song_id', `bible-${selectedBook.abbr}-${selectedChapter}-${selectedVerseIndex + 1}`);
+      }
+    } catch (e) {}
+    const text = selectedVerseIndex !== null ? (rawVerses[selectedVerseIndex] || '') : '';
+    const ref = selectedVerseIndex !== null ? `${selectedBook.name.toUpperCase()} ${selectedChapter}:${selectedVerseIndex + 1} (${versionAbbr})` : '';
+    const verseSong: Song | undefined = selectedVerseIndex !== null ? {
+      id: `bible-${selectedBook.abbr}-${selectedChapter}-${selectedVerseIndex + 1}`,
+      collection_id: 'biblia',
+      category: 'Bíblia',
+      title: ref,
+      lyrics: text,
+      author: ref
+    } : undefined;
+    broadcastToProjection({
+      type: 'SYNC_INDEX',
+      index: partIdx,
+      song: verseSong
+    });
+  };
+
+  // Sync index from broadcast and respond to REQUEST_SYNC from newly opened projection window
+  useEffect(() => {
+    const unsub = subscribeToProjection((msg) => {
+      if (msg.type === 'REQUEST_SYNC') {
+        if (selectedVerseIndex !== null && isBibleProjecting) {
+          const text = rawVerses[selectedVerseIndex] || '';
+          const ref = `${selectedBook.name.toUpperCase()} ${selectedChapter}:${selectedVerseIndex + 1} (${versionAbbr})`;
+          const verseSong: Song = {
+            id: `bible-${selectedBook.abbr}-${selectedChapter}-${selectedVerseIndex + 1}`,
+            collection_id: 'biblia',
+            category: 'Bíblia',
+            title: ref,
+            lyrics: text,
+            author: ref
+          };
+          broadcastToProjection({
+            type: 'PROJECT_SONG',
+            song: verseSong,
+            index: currentBiblePartIndex
+          });
+          broadcastToProjection({
+            type: 'SYNC_INDEX',
+            index: currentBiblePartIndex,
+            song: verseSong
+          });
+        }
+      } else if (msg.type === 'SYNC_INDEX' && typeof msg.index === 'number') {
+        if (selectedVerseIndex !== null) {
+          const expectedId = `bible-${selectedBook.abbr}-${selectedChapter}-${selectedVerseIndex + 1}`;
+          if (!msg.song || !msg.song.id || msg.song.id === expectedId) {
+            setCurrentBiblePartIndex(msg.index);
+          }
+        }
+      }
+    });
+    return () => unsub();
+  }, [selectedVerseIndex, selectedBook, selectedChapter, versionAbbr, rawVerses, currentBiblePartIndex, isBibleProjecting]);
 
   const handleCopyCurrent = () => {
     if (selectedVerseIndex === null) return;
@@ -500,16 +581,42 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
     }
   };
 
-  const versionAbbr = useMemo(() => {
-    if (version.includes('ARA')) return 'ARA';
-    if (version.includes('NVI')) return 'NVI';
-    if (version.includes('ARC')) return 'ARC';
-    if (version.includes('NTLH')) return 'NTLH';
-    return 'ARA';
-  }, [version]);
-
   const currentVerseText = selectedVerseIndex !== null ? (rawVerses[selectedVerseIndex] || '') : '';
   const currentReference = selectedVerseIndex !== null ? `${selectedBook.name.toUpperCase()} ${selectedChapter}:${selectedVerseIndex + 1} (${versionAbbr})` : '';
+
+  const currentVerseParts = useMemo(() => {
+    return splitBibleVerse(currentVerseText || '', 150);
+  }, [currentVerseText]);
+
+  // Keyboard navigation between parts while projecting (ArrowRight/Left, Space)
+  useEffect(() => {
+    if (!isBibleProjecting || currentVerseParts.length <= 1) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        if (currentBiblePartIndex < currentVerseParts.length - 1) {
+          e.preventDefault();
+          handleSelectBiblePart(currentBiblePartIndex + 1);
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (currentBiblePartIndex > 0) {
+          e.preventDefault();
+          handleSelectBiblePart(currentBiblePartIndex - 1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isBibleProjecting, currentVerseParts.length, currentBiblePartIndex]);
+
+  // Whenever selected verse or book/chapter changes, ALWAYS reset part index to 0
+  useEffect(() => {
+    setCurrentBiblePartIndex(0);
+  }, [selectedVerseIndex, selectedBook.abbr, selectedChapter]);
 
   // Filtered chapters if searched
   const chaptersList = useMemo(() => {
@@ -587,7 +694,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Circular emblem button matching dynamic theme */}
           <button 
-            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0)}
+            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0, 0)}
             className="w-8 h-8 rounded-full text-neutral-950 flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0 hover:brightness-110 cursor-pointer"
             style={{ backgroundColor: accent.hex }}
             title="Projetar versículo selecionado"
@@ -609,7 +716,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
 
           {/* Pill Button: Navegar em versículos */}
           <button
-            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0)}
+            onClick={() => handleProjectSelected(selectedVerseIndex !== null ? selectedVerseIndex : 0, 0)}
             className="px-3.5 py-1.5 bg-[#1b1c20] hover:bg-neutral-800 border border-neutral-700/80 rounded-full text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-sm shrink-0"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: accent.hex }} />
@@ -662,29 +769,43 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
       </div>
 
       {/* ============================================================ */}
-      {/* MOBILE SWITCHER BAR (<lg breakpoint)                          */}
+      {/* MOBILE STEP BREADCRUMB BAR (<lg breakpoint)                   */}
       {/* ============================================================ */}
-      <div className="flex lg:hidden items-center bg-[#16171a] p-1 rounded-xl border border-neutral-800 shrink-0">
+      <div className="flex lg:hidden items-center justify-between bg-[#16171a] p-1 rounded-xl border border-neutral-800 shrink-0 gap-1 text-xs">
         <button
-          onClick={() => setMobileTab('nav')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-            mobileTab === 'nav' 
-              ? 'bg-neutral-800 text-white shadow-sm' 
-              : 'text-neutral-400 hover:text-white'
+          onClick={() => setMobileStep('books')}
+          className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 ${
+            mobileStep === 'books' 
+              ? 'text-neutral-950 shadow-sm' 
+              : 'text-neutral-400 hover:text-white bg-neutral-900/60'
           }`}
+          style={mobileStep === 'books' ? { backgroundColor: accent.hex } : undefined}
         >
-          Livros & Capítulos
+          <span>1. Livros</span>
         </button>
+        <span className="text-neutral-600 text-[10px]">›</span>
         <button
-          onClick={() => setMobileTab('verses')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mobileTab === 'verses' 
-              ? 'text-white shadow-sm' 
-              : 'text-neutral-400 hover:text-white'
+          onClick={() => setMobileStep('chapters')}
+          className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 ${
+            mobileStep === 'chapters' 
+              ? 'text-neutral-950 shadow-sm' 
+              : 'text-neutral-400 hover:text-white bg-neutral-900/60'
           }`}
-          style={mobileTab === 'verses' ? { backgroundColor: `${accent.hex}25`, color: accent.hex } : undefined}
+          style={mobileStep === 'chapters' ? { backgroundColor: accent.hex } : undefined}
         >
-          <span>Versículos ({selectedBook.abbr} {selectedChapter})</span>
+          <span className="truncate">2. Capítulos ({selectedBook.abbr})</span>
+        </button>
+        <span className="text-neutral-600 text-[10px]">›</span>
+        <button
+          onClick={() => setMobileStep('verses')}
+          className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 ${
+            mobileStep === 'verses' 
+              ? 'text-neutral-950 shadow-sm' 
+              : 'text-neutral-400 hover:text-white bg-neutral-900/60'
+          }`}
+          style={mobileStep === 'verses' ? { backgroundColor: accent.hex } : undefined}
+        >
+          <span>3. Versículos ({selectedChapter})</span>
         </button>
       </div>
 
@@ -697,12 +818,14 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         {/* LEFT PANEL: LIVROS & CAPÍTULOS (Col-span 5 in 12-col)        */}
         {/* ------------------------------------------------------------ */}
         <div className={`lg:col-span-5 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 flex flex-col overflow-hidden shadow-md shrink-0 ${
-          mobileTab === 'verses' ? 'hidden lg:flex' : 'flex-1 h-[420px] sm:h-[460px] lg:h-full'
+          mobileStep === 'verses' ? 'hidden lg:flex' : 'flex-1 h-[460px] sm:h-[500px] lg:h-full'
         }`}>
-          <div className="grid grid-cols-12 gap-3 h-full overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 h-full overflow-hidden">
             
-            {/* SUB-COLUMN A: LIVROS (Cols 8 of 12) */}
-            <div className="col-span-8 flex flex-col h-full overflow-hidden pr-1 border-r border-neutral-800/80">
+            {/* SUB-COLUMN A: LIVROS (Cols 8 of 12 on desktop, full on mobile books step) */}
+            <div className={`flex flex-col h-full overflow-hidden lg:pr-1 lg:border-r border-neutral-800/80 ${
+              mobileStep === 'chapters' ? 'hidden lg:flex lg:col-span-8' : 'flex-1 lg:col-span-8'
+            }`}>
               {/* Search: Buscar livro... */}
               <div className="relative mb-2 shrink-0">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500" />
@@ -748,7 +871,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
 
               {/* 4-COLUMNS GRID OF BOOKS CARDS matching image.png */}
               <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
                   {filteredBooks.map((b) => {
                     const isSelected = selectedBook.abbr === b.abbr;
                     const cardStyle = getBookCardStyle(b, isSelected);
@@ -773,8 +896,27 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
               </div>
             </div>
 
-            {/* SUB-COLUMN B: CAPÍTULOS (Cols 4 of 12) */}
-            <div className="col-span-4 flex flex-col h-full overflow-hidden">
+            {/* SUB-COLUMN B: CAPÍTULOS (Cols 4 of 12 on desktop, full on mobile chapters step) */}
+            <div className={`flex flex-col h-full overflow-hidden ${
+              mobileStep === 'books' ? 'hidden lg:flex lg:col-span-4' : 'flex-1 lg:col-span-4'
+            }`}>
+              {/* Mobile Back to Books header row */}
+              <div className="flex lg:hidden items-center justify-between pb-2 mb-1 border-b border-neutral-800 shrink-0">
+                <button
+                  onClick={() => setMobileStep('books')}
+                  className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-300 hover:text-white flex items-center gap-1 text-xs font-bold"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Livros</span>
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white">{selectedBook.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 font-bold text-neutral-400">
+                    {selectedBook.testament}
+                  </span>
+                </div>
+              </div>
+
               {/* Search Cap... */}
               <div className="relative mb-2 shrink-0">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500" />
@@ -790,16 +932,16 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
               {/* CAP. label */}
               <div className="flex items-center justify-between mb-2 shrink-0">
                 <span className="text-[11px] font-bold text-white uppercase tracking-wider">
-                  CAP.
+                  CAP. ({selectedBook.name})
                 </span>
                 <span className="text-[10px] text-neutral-500 font-mono">
-                  {selectedBook.chapters}
+                  {selectedBook.chapters} caps
                 </span>
               </div>
 
-              {/* 4-COLUMNS GRID OF CHAPTER BUTTONS matching image.png */}
+              {/* GRID OF CHAPTER BUTTONS (5 cols on mobile, 4 cols on desktop) */}
               <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-5 lg:grid-cols-4 gap-1.5">
                   {chaptersList.map((ch) => {
                     const isSelected = selectedChapter === ch;
 
@@ -807,7 +949,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
                       <button
                         key={ch}
                         onClick={() => handleSelectChapter(ch)}
-                        className={`aspect-square rounded-lg text-xs font-semibold flex items-center justify-center transition-all border ${
+                        className={`aspect-square rounded-lg text-xs font-semibold flex items-center justify-center transition-all border cursor-pointer ${
                           isSelected
                             ? 'text-neutral-950 font-bold shadow-md scale-105'
                             : 'bg-[#212328] hover:bg-neutral-700 text-neutral-200 border-neutral-800/80'
@@ -829,7 +971,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
         {/* RIGHT PANEL: VERSÍCULOS & LEITURA (Col-span 7 in 12-col)     */}
         {/* ------------------------------------------------------------ */}
         <div className={`lg:col-span-7 bg-[#16171a] border border-neutral-800/90 rounded-2xl p-3 sm:p-3.5 flex flex-col overflow-hidden relative shadow-md shrink-0 ${
-          mobileTab === 'nav' ? 'hidden lg:flex' : 'flex-1 h-[480px] sm:h-[520px] lg:h-full'
+          mobileStep !== 'verses' ? 'hidden lg:flex' : 'flex-1 h-[480px] sm:h-[520px] lg:h-full'
         }`}>
           
           {/* Header row matching image.png */}
@@ -837,12 +979,12 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
             {/* Left: Title + Arrow navigation + Red circle button */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               <button
-                onClick={() => setMobileTab('nav')}
-                className="lg:hidden p-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:text-white flex items-center gap-1 text-xs"
-                title="Voltar para Livros e Capítulos"
+                onClick={() => setMobileStep('chapters')}
+                className="lg:hidden p-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:text-white flex items-center gap-1 text-xs font-semibold"
+                title="Voltar para Capítulos"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
-                <span className="text-[11px]">Livros</span>
+                <span className="text-[11px]">Capítulos</span>
               </button>
               <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight">
                 {selectedBook.name} {selectedChapter}
@@ -904,7 +1046,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
           </div>
 
           {/* Verses List matching image.png & image 4 (Scrolls internally without outer scrollbar) */}
-          <div ref={versesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-2 pt-2 space-y-2 pb-44">
+          <div ref={versesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-2 pt-2 space-y-2 pb-6 lg:pb-44">
             {displayedVerses.map((item) => {
               const verseNum = item.verseNum;
               const isSelected = selectedVerseIndex === item.originalIndex;
@@ -914,14 +1056,14 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
                   key={verseNum}
                   onClick={() => {
                     if (isBibleProjecting) {
-                      // Estando projetado, ao selecionar outro verso, substitui imediatamente na tela de projeção
+                      // Estando projetado, ao selecionar outro verso, substitui imediatamente na tela de projeção e reseta para a Parte 1
                       setSelectedVerseIndex(item.originalIndex);
-                      handleProjectSelected(item.originalIndex);
+                      handleProjectSelected(item.originalIndex, 0);
                     } else {
                       setSelectedVerseIndex(isSelected ? null : item.originalIndex);
                     }
                   }}
-                  onDoubleClick={() => handleProjectSelected(item.originalIndex)}
+                  onDoubleClick={() => handleProjectSelected(item.originalIndex, 0)}
                   className={`flex items-start gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all border-l-4 ${
                     isSelected
                       ? 'text-white font-medium shadow-md border'
@@ -950,12 +1092,53 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
           </div>
 
           {/* ============================================================ */}
-          {/* FLOATING PROJECTION CONTROLS AT BOTTOM RIGHT                */}
-          {/* - Se projetando: miniatura NÃO aparece, apenas botão fechar */}
-          {/* - Se não projetando: exibe miniatura + botão de projetar   */}
+          {/* FLOATING PROJECTION CONTROLS AT BOTTOM RIGHT (DESKTOP ONLY) */}
+          {/* No celular: miniatura e botão de projeção ocultos            */}
           {/* ============================================================ */}
           {isBibleProjecting ? (
-            <div className="absolute bottom-3 right-3 z-30 flex items-center select-none animate-in fade-in zoom-in-95 duration-200">
+            <div className="hidden lg:flex absolute bottom-3 right-3 z-30 items-center gap-2.5 select-none animate-in fade-in zoom-in-95 duration-200">
+              {currentVerseParts.length > 1 && (
+                <div 
+                  className="bg-[#090e18]/95 backdrop-blur-md border border-[#1b253b] rounded-2xl px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] flex items-center gap-3"
+                  style={{ borderColor: `${accent.hex}40` }}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                      No Telão
+                    </span>
+                    <span className="text-xs font-black uppercase" style={{ color: accent.hex }}>
+                      PARTE {currentBiblePartIndex + 1} DE {currentVerseParts.length}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {currentVerseParts.map((_, pIdx) => {
+                      const isCurrent = pIdx === currentBiblePartIndex;
+                      return (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => handleSelectBiblePart(pIdx)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wide transition-all cursor-pointer border ${
+                            isCurrent
+                              ? 'text-white shadow-md scale-105'
+                              : 'bg-neutral-800/80 text-neutral-400 hover:text-white border-neutral-700/60'
+                          }`}
+                          style={isCurrent ? {
+                            backgroundColor: accent.hex,
+                            borderColor: accent.hex,
+                            boxShadow: `0 0 14px ${accent.hex}60`
+                          } : undefined}
+                          title={`Projetar Parte ${pIdx + 1}`}
+                        >
+                          Parte {pIdx + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -968,21 +1151,43 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
               </button>
             </div>
           ) : selectedVerseIndex !== null ? (
-            <div className="absolute bottom-3 right-3 z-30 flex items-end select-none animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="hidden lg:flex absolute bottom-3 right-3 z-30 items-end select-none animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Dark Navy Projection Preview Card */}
               <div 
-                onClick={() => handleProjectSelected(selectedVerseIndex)}
+                onClick={() => handleProjectSelected(selectedVerseIndex, 0)}
                 className="bg-[#090e18]/95 backdrop-blur-md border border-[#1b253b] rounded-2xl p-4 sm:p-5 max-w-xs sm:max-w-md shadow-[0_12px_40px_rgba(0,0,0,0.85)] cursor-pointer transition-all group"
                 style={{ borderColor: `${accent.hex}40` }}
               >
+                {currentVerseParts.length > 1 && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <span 
+                      className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-sm"
+                      style={{ 
+                        color: accent.hex, 
+                        backgroundColor: `${accent.hex}18`, 
+                        borderColor: `${accent.hex}40` 
+                      }}
+                    >
+                      {currentVerseParts.length} Partes (Texto Longo)
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      Dividido automaticamente
+                    </span>
+                  </div>
+                )}
                 <p className="text-xs sm:text-[13px] text-neutral-100 font-medium leading-relaxed italic line-clamp-3 select-text">
-                  “{currentVerseText}”
+                  “{currentVerseParts.length > 1 ? currentVerseParts[0] : currentVerseText}”
                 </p>
                 <p 
-                  className="text-[11px] font-bold tracking-wider mt-2 uppercase font-sans"
+                  className="text-[11px] font-bold tracking-wider mt-2 uppercase font-sans flex items-center justify-between"
                   style={{ color: accent.hex }}
                 >
-                  {currentReference}
+                  <span>{currentReference}</span>
+                  {currentVerseParts.length > 1 && (
+                    <span className="text-[10px] font-mono opacity-80 lowercase">
+                      (iniciará na parte 1)
+                    </span>
+                  )}
                 </p>
               </div>
 
@@ -990,7 +1195,7 @@ export function BibliaView({ onProjectVerse, onBackToHome, isProjecting, onClose
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleProjectSelected(selectedVerseIndex);
+                  handleProjectSelected(selectedVerseIndex, 0);
                 }}
                 className="w-12 h-12 sm:w-13 sm:h-13 rounded-full active:scale-95 shadow-2xl flex items-center justify-center transition-all cursor-pointer border-2 border-[#16171a] shrink-0 -ml-3 -mb-1 z-40 hover:scale-105 hover:brightness-110"
                 style={{ backgroundColor: accent.hex }}

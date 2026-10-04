@@ -9,6 +9,13 @@ import { AtmosphericBackground } from './AtmosphericBackground';
 import { subscribeToProjection, broadcastToProjection, ProjectionMessage } from '../utils/projectionSync';
 import { getSupabase } from '../lib/supabase';
 import { resolveBibleSongFromId } from '../data/bibleData';
+import { 
+  getProjectionSettings, 
+  getProjectionBackgroundStyle, 
+  getProjectionTextColor, 
+  getProjectionFontSizeClamp, 
+  ProjectionVisualConfig 
+} from '../utils/projectionSettings';
 
 interface ProjectedOnlyViewProps {
   song?: Song | null;
@@ -19,6 +26,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   const [song, setSong] = useState<Song | null>(initialSong || null);
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'montserrat' | 'opensans'>('serif');
+  const [projConfig, setProjConfig] = useState<ProjectionVisualConfig>(getProjectionSettings);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [churchLiveConfig, setChurchLiveConfig] = useState<ChurchScreenConfig | null>(null);
   const [churchLiveLogo, setChurchLiveLogo] = useState<string>(() => {
@@ -44,6 +52,33 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         }));
       }
     }).catch(() => {});
+  }, []);
+
+  // Whenever the active song or Bible verse changes, ALWAYS reset current slide/part index to 0 synchronously during render!
+  const currentSongKey = song ? `${song.id}-${song.lyrics}` : '';
+  const [renderedSongKey, setRenderedSongKey] = useState(() => currentSongKey);
+  if (currentSongKey !== renderedSongKey) {
+    setRenderedSongKey(currentSongKey);
+    setCurrentPhraseIndex(0);
+    try {
+      localStorage.setItem('projection_current_index', '0');
+    } catch (e) {}
+  }
+
+  const songRef = useRef(song);
+  useEffect(() => {
+    songRef.current = song;
+  }, [song]);
+
+  // Synchronize projection visual config (background, text color, font scaling)
+  useEffect(() => {
+    const handleUpdate = () => setProjConfig(getProjectionSettings());
+    window.addEventListener('projection_settings_changed', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('projection_settings_changed', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   const phrases = useMemo(() => {
@@ -264,11 +299,17 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     prizeImage?: string | null;
     prizeTitle?: string;
     isRolling?: boolean;
+    config?: any;
   }>(() => {
     try {
       const raw = localStorage.getItem('projection_sorteio_data');
       const savedPrizeImg = localStorage.getItem('sorteio_prize_image');
       const savedPrizeTitle = localStorage.getItem('sorteio_prize_title');
+      let savedConfig: any = undefined;
+      const rawConfig = localStorage.getItem('sorteio_projection_config');
+      if (rawConfig) {
+        try { savedConfig = JSON.parse(rawConfig); } catch (e) {}
+      }
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed) {
@@ -277,7 +318,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             winners: Array.isArray(parsed.winners) ? parsed.winners : [],
             prizeImage: parsed.prizeImage !== undefined ? parsed.prizeImage : savedPrizeImg,
             prizeTitle: parsed.prizeTitle !== undefined ? parsed.prizeTitle : (savedPrizeTitle || ''),
-            isRolling: Boolean(parsed.isRolling)
+            isRolling: Boolean(parsed.isRolling),
+            config: parsed.config || savedConfig
           };
         }
       }
@@ -286,7 +328,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         winners: [],
         prizeImage: savedPrizeImg,
         prizeTitle: savedPrizeTitle || '',
-        isRolling: false
+        isRolling: false,
+        config: savedConfig
       };
     } catch (e) {}
     return {
@@ -378,6 +421,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
     // 0. Immediate Bible verse resolution if target is Bible
     if (targetSongId && targetSongId.startsWith('bible-')) {
+      setCurrentPhraseIndex(0);
       const urlVerseText = urlParams.get('verseText');
       const urlVerseRef = urlParams.get('verseRef');
       if (urlVerseText) {
@@ -552,15 +596,25 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
     const unsubscribe = subscribeToProjection((msg: ProjectionMessage) => {
       if (msg.type === 'SYNC_INDEX' && typeof msg.index === 'number') {
-        setCurrentPhraseIndex(msg.index);
         if (msg.song) {
+          const isDifferentSong = !songRef.current || songRef.current.id !== msg.song.id;
           setSong(msg.song);
+          if (isDifferentSong) {
+            setCurrentPhraseIndex(typeof msg.index === 'number' ? msg.index : 0);
+          } else {
+            setCurrentPhraseIndex(msg.index);
+          }
+        } else {
+          setCurrentPhraseIndex(msg.index);
         }
       } else if (msg.type === 'PROJECT_SONG' || msg.type === 'SONG_UPDATED' || (msg.type as any) === 'CHURCH_CONFIG_UPDATED') {
         if (msg.song) {
+          const isDifferentSong = !songRef.current || songRef.current.id !== msg.song.id || songRef.current.lyrics !== msg.song.lyrics;
           setSong(msg.song);
           if (typeof msg.index === 'number') {
             setCurrentPhraseIndex(msg.index);
+          } else if (isDifferentSong) {
+            setCurrentPhraseIndex(0);
           }
           const isReal = msg.song.id !== 'sorteio-projection' && 
                          msg.song.category !== 'sorteio' && 
@@ -621,7 +675,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             winners: finalWinners,
             prizeImage: msg.data.prizeImage !== undefined ? msg.data.prizeImage : (prev.prizeImage || localStorage.getItem('sorteio_prize_image')),
             prizeTitle: msg.data.prizeTitle !== undefined ? msg.data.prizeTitle : (prev.prizeTitle || localStorage.getItem('sorteio_prize_title') || ''),
-            isRolling: Boolean(msg.data.isRolling)
+            isRolling: Boolean(msg.data.isRolling),
+            config: msg.data.config !== undefined ? msg.data.config : prev.config
           }));
           const currentTarget = localStorage.getItem('projection_active_song_id');
           const currentType = localStorage.getItem('projection_active_type');
@@ -637,6 +692,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             setSong(sorteioSong);
           }
         }
+      } else if ((msg.type as any) === 'SYNC_STYLE' && msg.data) {
+        setProjConfig(msg.data);
       } else if (msg.type === 'SYNC_FONT' && msg.fontFamily) {
         setFontFamily(msg.fontFamily);
       } else if (msg.type === 'CLEAR_PROJECTION') {
@@ -650,6 +707,38 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     });
 
     const handleStorage = (e: StorageEvent) => {
+      if (
+        e.key === 'projection_bg_style' ||
+        e.key === 'projection_custom_bg_color' ||
+        e.key === 'projection_text_color_mode' ||
+        e.key === 'projection_custom_text_color' ||
+        e.key === 'projection_font_size' ||
+        e.key === 'fontSize'
+      ) {
+        setProjConfig(getProjectionSettings());
+      }
+      if (e.key === 'sorteio_projection_config' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setSorteioLive(prev => ({ ...prev, config: parsed }));
+        } catch (err) {}
+      }
+      if (e.key === 'projection_sorteio_data' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed) {
+            setSorteioLive(prev => ({
+              ...prev,
+              winner: parsed.winner !== undefined ? String(parsed.winner) : prev.winner,
+              winners: Array.isArray(parsed.winners) ? parsed.winners : prev.winners,
+              prizeImage: parsed.prizeImage !== undefined ? parsed.prizeImage : prev.prizeImage,
+              prizeTitle: parsed.prizeTitle !== undefined ? parsed.prizeTitle : prev.prizeTitle,
+              isRolling: Boolean(parsed.isRolling),
+              config: parsed.config || prev.config
+            }));
+          }
+        } catch (err) {}
+      }
       if (e.key === 'church_logo_url' && e.newValue !== null) {
         setChurchLiveLogo(e.newValue);
         setChurchLiveConfig(prev => ({ ...(prev || getChurchScreenConfig()), logoUrl: e.newValue || '' }));
@@ -666,10 +755,18 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     };
     window.addEventListener('storage', handleStorage);
 
+    const handleSettingsChanged = (e: any) => {
+      if (e?.detail) {
+        setProjConfig(e.detail);
+      }
+    };
+    window.addEventListener('projection_settings_changed', handleSettingsChanged);
+
     return () => {
       clearTimeout(timerSync);
       unsubscribe();
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('projection_settings_changed', handleSettingsChanged);
     };
   }, [initialSong]);
 
@@ -681,7 +778,8 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
 
         // Check index synchronization
         const rawIndex = localStorage.getItem('projection_current_index');
-        if (rawIndex !== null) {
+        const activeSongId = localStorage.getItem('projection_active_song_id');
+        if (rawIndex !== null && (!activeSongId || !song || activeSongId === song.id)) {
           const parsedIdx = Number(rawIndex);
           if (!isNaN(parsedIdx)) {
             setCurrentPhraseIndex(prev => prev !== parsedIdx ? parsedIdx : prev);
@@ -693,6 +791,21 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
         if (rawFont && (rawFont === 'serif' || rawFont === 'montserrat' || rawFont === 'opensans')) {
           setFontFamily(prev => prev !== rawFont ? rawFont : prev);
         }
+
+        // Check visual projection settings synchronization
+        const latestProj = getProjectionSettings();
+        setProjConfig(prev => {
+          if (
+            prev.bgStyle !== latestProj.bgStyle ||
+            prev.customBgColor !== latestProj.customBgColor ||
+            prev.textColorMode !== latestProj.textColorMode ||
+            prev.customTextColor !== latestProj.customTextColor ||
+            prev.fontSize !== latestProj.fontSize
+          ) {
+            return latestProj;
+          }
+          return prev;
+        });
 
         // Synchronize church logo from localStorage in real time
         const currentLocalLogo = localStorage.getItem('church_logo_url');
@@ -708,12 +821,17 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
               const parsedWinner = String(parsed.winner);
               const parsedWinners = Array.isArray(parsed.winners) ? parsed.winners : [];
               setSorteioLive(prev => {
-                if (prev.winner === parsedWinner && prev.winners?.length === parsedWinners.length) {
+                const configMatches = JSON.stringify(prev.config) === JSON.stringify(parsed.config);
+                if (prev.winner === parsedWinner && prev.winners?.length === parsedWinners.length && configMatches) {
                   return prev;
                 }
                 return {
                   winner: parsedWinner,
-                  winners: parsedWinners
+                  winners: parsedWinners,
+                  prizeImage: parsed.prizeImage ?? prev.prizeImage,
+                  prizeTitle: parsed.prizeTitle ?? prev.prizeTitle,
+                  isRolling: Boolean(parsed.isRolling),
+                  config: parsed.config || prev.config
                 };
               });
               setSong(prev => {
@@ -772,6 +890,7 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
                 if (prev && prev.id === parsedBible.id && prev.lyrics === parsedBible.lyrics && prev.title === parsedBible.title) {
                   return prev;
                 }
+                setCurrentPhraseIndex(0);
                 return parsedBible;
               });
             }
@@ -798,15 +917,28 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   }, []);
 
   if (isBible && song) {
+    const bgStyleObj = getProjectionBackgroundStyle(projConfig);
     return (
       <div 
-        onClick={toggleFullscreen}
         onDoubleClick={toggleFullscreen}
-        className="fixed inset-0 bg-[#0b0d14] flex flex-col justify-between overflow-hidden cursor-pointer"
+        style={bgStyleObj}
+        className="fixed inset-0 flex flex-col justify-between overflow-hidden transition-colors duration-300"
       >
         <BibleProjectionScreen 
+          key={song.id || song.title}
           verseText={song.lyrics} 
           reference={song.title || song.author || ''} 
+          partIndex={currentPhraseIndex}
+          onPartChange={(newIdx) => {
+            setCurrentPhraseIndex(newIdx);
+            try {
+              localStorage.setItem('projection_current_index', String(newIdx));
+              if (song.id) {
+                localStorage.setItem('projection_active_song_id', song.id);
+              }
+            } catch (e) {}
+            broadcastToProjection({ type: 'SYNC_INDEX', index: newIdx, song });
+          }}
         />
       </div>
     );
@@ -832,11 +964,17 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
   }
 
   if (isRealSong && song && (song.lyrics || song.title)) {
+    const currentSlideData = song.slides && song.slides[currentPhraseIndex] ? song.slides[currentPhraseIndex] : undefined;
+    const bgStyleObj = getProjectionBackgroundStyle(projConfig, currentSlideData);
+    const activeTextColor = getProjectionTextColor(projConfig, accent.hex, currentSlideData);
+    const fontSizeObj = getProjectionFontSizeClamp(projConfig, currentSlideData);
+
     return (
       <div 
         onClick={toggleFullscreen}
         onDoubleClick={toggleFullscreen}
-        className="fixed inset-0 bg-black flex items-center justify-center p-12 overflow-hidden cursor-pointer"
+        style={bgStyleObj}
+        className="fixed inset-0 flex items-center justify-center p-8 sm:p-12 overflow-hidden cursor-pointer transition-colors duration-300"
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -845,23 +983,35 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex flex-col items-center gap-8 z-10"
+            className="flex flex-col items-center gap-4 sm:gap-6 z-10 max-w-6xl w-full"
           >
             <div
               className={cn(
-                "text-center italic select-none drop-shadow-2xl transition-colors duration-300",
-                currentPhraseIndex === 0 ? "not-italic font-bold" : "text-white",
-                fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-bold" : "font-opensans font-extrabold"
+                "text-center select-none drop-shadow-2xl transition-all duration-300",
+                fontFamily === 'serif' ? "font-serif" : fontFamily === 'montserrat' ? "font-montserrat font-black" : "font-opensans font-black"
               )}
               style={{ 
-                fontSize: 'clamp(2.5rem, 8vw, 8rem)', 
-                lineHeight: '1.2',
-                color: currentPhraseIndex === 0 ? accent.hex : undefined,
-                filter: currentPhraseIndex === 0 ? `drop-shadow(0 4px 30px ${accent.hex}77)` : undefined
+                fontSize: fontSizeObj.fontSize, 
+                lineHeight: fontSizeObj.lineHeight,
+                color: activeTextColor,
+                filter: `drop-shadow(0 4px 30px ${activeTextColor}66)`
               }}
             >
-              {phrases[currentPhraseIndex] || song.title || ''}
+              {currentSlideData?.primaryText || phrases[currentPhraseIndex] || song.title || ''}
             </div>
+
+            {/* Auxiliary text if slide has it */}
+            {currentSlideData?.auxiliaryText && (
+              <div
+                className="text-center font-medium opacity-80 transition-colors duration-300"
+                style={{
+                  color: currentSlideData.auxColor || activeTextColor,
+                  fontSize: `clamp(1rem, ${(currentSlideData.auxSize || 10) * 0.3}vw, 2.5rem)`
+                }}
+              >
+                {currentSlideData.auxiliaryText}
+              </div>
+            )}
 
             {/* Next Phrase Preview: ONLY on Return Screen (3ª Tela / Tela de Retorno) */}
             {isReturnScreen && currentPhraseIndex < phrases.length - 1 && phrases[currentPhraseIndex + 1] && (
@@ -935,11 +1085,14 @@ export function ProjectedOnlyView({ song: initialSong }: ProjectedOnlyViewProps)
     logoUrl: effectiveLogo
   };
 
+  const bgStyleObj = getProjectionBackgroundStyle(projConfig);
+
   return (
     <div 
       onClick={toggleFullscreen}
       onDoubleClick={toggleFullscreen}
-      className="fixed inset-0 bg-black flex flex-col justify-between overflow-hidden cursor-pointer"
+      style={bgStyleObj}
+      className="fixed inset-0 flex flex-col justify-between overflow-hidden cursor-pointer transition-colors duration-300"
     >
       <ChurchClockProjectionScreen 
         churchName={churchName} 

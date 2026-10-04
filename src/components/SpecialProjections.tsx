@@ -1,9 +1,22 @@
-import { useMemo, useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Sparkles, Gift } from 'lucide-react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Sparkles, Gift, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { ChurchScreenConfig, DEFAULT_CHURCH_CONFIG } from '../types';
 import { broadcastToProjection, subscribeToProjection } from '../utils/projectionSync';
+import { 
+  splitBibleVerse, 
+  getAdaptiveBibleFontSize, 
+  getBibleSplitMode, 
+  BibleSplitMode 
+} from '../utils/bibleSplitter';
+import { 
+  getProjectionSettings, 
+  getProjectionBackgroundStyle, 
+  getProjectionTextColor, 
+  getProjectionFontSizeScale, 
+  ProjectionVisualConfig 
+} from '../utils/projectionSettings';
 import { 
   saveChurchLogoToDb, 
   getChurchLogoFromDb, 
@@ -95,56 +108,324 @@ export function RandomInnerParticles({ count = 24, accentColor }: RandomInnerPar
   );
 }
 
-interface BibleProjectionProps {
+export interface BibleProjectionProps {
   verseText: string;
   reference: string;
+  partIndex?: number;
+  totalParts?: number;
+  onPartChange?: (index: number) => void;
+  splitMode?: BibleSplitMode;
 }
 
-export function BibleProjectionScreen({ verseText, reference }: BibleProjectionProps) {
+export function BibleProjectionScreen({ 
+  verseText, 
+  reference, 
+  partIndex,
+  onPartChange,
+  splitMode: propSplitMode
+}: BibleProjectionProps) {
   const { accent } = useTheme();
+  const [internalPartIndex, setInternalPartIndex] = useState(0);
+  const [currentSplitMode, setCurrentSplitMode] = useState<BibleSplitMode>(propSplitMode || getBibleSplitMode());
+  const [projConfig, setProjConfig] = useState<ProjectionVisualConfig>(getProjectionSettings);
+
+  // Listen to projection settings (background, text color, font size)
+  useEffect(() => {
+    const handleUpdate = () => setProjConfig(getProjectionSettings());
+    window.addEventListener('projection_settings_changed', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    const unsub = subscribeToProjection((msg) => {
+      if (msg.type === ('SYNC_STYLE' as any) && msg.data) {
+        setProjConfig(msg.data);
+      }
+    });
+    return () => {
+      window.removeEventListener('projection_settings_changed', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+      unsub();
+    };
+  }, []);
+
+  // Listen to split mode changes
+  useEffect(() => {
+    if (propSplitMode) {
+      setCurrentSplitMode(propSplitMode);
+      return;
+    }
+    const handleModeChange = (e: any) => {
+      if (e?.detail) setCurrentSplitMode(e.detail);
+    };
+    window.addEventListener('bible_split_mode_changed', handleModeChange);
+    return () => window.removeEventListener('bible_split_mode_changed', handleModeChange);
+  }, [propSplitMode]);
+
+  // Synchronous verse change detection during render
+  const currentKey = `${reference}-${verseText}`;
+  const [renderedVerseKey, setRenderedVerseKey] = useState(() => currentKey);
+  const isDifferentVerse = currentKey !== renderedVerseKey;
+
+  if (isDifferentVerse) {
+    setRenderedVerseKey(currentKey);
+    setInternalPartIndex(0);
+  }
+
+  // Whenever reference or verseText changes (another verse is loaded), ALWAYS reset to Part 1 (index 0)
+  useEffect(() => {
+    setInternalPartIndex(0);
+    try {
+      localStorage.setItem('projection_current_index', '0');
+    } catch (e) {}
+  }, [reference, verseText]);
+
+  // Sync internal index if controlled externally via prop
+  useEffect(() => {
+    if (typeof partIndex === 'number') {
+      setInternalPartIndex(partIndex);
+    }
+  }, [partIndex]);
+
+  // Sync index from broadcast if running uncontrolled on projection window
+  useEffect(() => {
+    const unsub = subscribeToProjection((msg) => {
+      if (msg.type === 'SYNC_INDEX' && typeof msg.index === 'number') {
+        setInternalPartIndex(msg.index);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Split text into parts (or single slide if mode is 'fit')
+  const parts = useMemo(() => {
+    return splitBibleVerse(verseText || '', 150, currentSplitMode === 'fit');
+  }, [verseText, currentSplitMode]);
+
+  // If a new verse just arrived, start unconditionally at Part 1 (index 0)
+  const activeIndex = isDifferentVerse 
+    ? 0 
+    : Math.min(
+        Math.max(0, typeof partIndex === 'number' ? partIndex : internalPartIndex),
+        Math.max(0, parts.length - 1)
+      );
+
+  const currentPartText = parts[activeIndex] || verseText || 'No princípio criou Deus os céus e a terra.';
+
+  // Adaptive font size: scales smoothly according to length so it NEVER overflows or cuts off
+  const { fontSize, lineHeight } = useMemo(() => {
+    return getAdaptiveBibleFontSize(currentPartText.length);
+  }, [currentPartText]);
+
+  const changePart = useCallback((newIdx: number) => {
+    if (newIdx < 0 || newIdx >= parts.length) return;
+    setInternalPartIndex(newIdx);
+    if (onPartChange) {
+      onPartChange(newIdx);
+    }
+    try {
+      localStorage.setItem('projection_current_index', String(newIdx));
+    } catch (e) {}
+    broadcastToProjection({ type: 'SYNC_INDEX', index: newIdx });
+  }, [parts.length, onPartChange]);
+
+  const nextPart = useCallback(() => {
+    if (activeIndex < parts.length - 1) {
+      changePart(activeIndex + 1);
+    }
+  }, [activeIndex, parts.length, changePart]);
+
+  const prevPart = useCallback(() => {
+    if (activeIndex > 0) {
+      changePart(activeIndex - 1);
+    }
+  }, [activeIndex, changePart]);
+
+  // Keyboard navigation for multi-part verses (ArrowLeft/Right, Space, PageUp/Down)
+  useEffect(() => {
+    if (parts.length <= 1) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
+
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        nextPart();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        prevPart();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [parts.length, nextPart, prevPart]);
+
+  // Projection styling overrides
+  const bgStyleObj = getProjectionBackgroundStyle(projConfig);
+  const activeTextColor = getProjectionTextColor(projConfig, '#ffffff');
+  const fontScale = getProjectionFontSizeScale(projConfig.fontSize);
+  const scaledFontSize = fontScale !== 1.0 ? `calc(${fontSize} * ${fontScale})` : fontSize;
 
   return (
-    <div className="w-full h-full bg-[#0b0d14] flex flex-col justify-between p-8 sm:p-14 md:p-18 overflow-hidden relative select-none">
+    <div 
+      style={bgStyleObj}
+      className="w-full h-full flex flex-col justify-between p-6 sm:p-10 md:p-14 overflow-hidden relative select-none transition-colors duration-300"
+      onClick={(e) => {
+        // If click on right half and multiple parts exist, go next; if left half, go prev
+        if (parts.length > 1) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          if (clickX > rect.width * 0.65) {
+            nextPart();
+          } else if (clickX < rect.width * 0.35) {
+            prevPart();
+          }
+        }
+      }}
+    >
       {/* Subtle ambient lighting */}
       <div 
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] rounded-full blur-3xl pointer-events-none opacity-20"
-        style={{ backgroundColor: accent.hex }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[520px] rounded-full blur-3xl pointer-events-none opacity-20 transition-colors duration-700"
+        style={{ backgroundColor: activeTextColor }}
       />
 
-      {/* Top spacing */}
-      <div className="h-4 sm:h-8" />
+      {/* TOP HEADER: PARTE 1 / PARTE 2 INDICATOR (Prompt: "colocando acima do texto parte 1 e assim por diante") */}
+      <div className="w-full min-h-[48px] flex items-center justify-center z-20 pt-1 sm:pt-2">
+        {parts.length > 1 ? (
+          <div className="flex items-center gap-2 sm:gap-3 bg-black/40 backdrop-blur-md px-3 sm:px-4 py-1.5 rounded-full border border-neutral-800/80 shadow-xl">
+            {parts.map((_, pIdx) => {
+              const isSelected = pIdx === activeIndex;
+              return (
+                <button
+                  key={pIdx}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changePart(pIdx);
+                  }}
+                  className={`px-3.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 sm:gap-2 shadow-md border ${
+                    isSelected
+                      ? 'scale-105 shadow-lg'
+                      : 'opacity-60 hover:opacity-100 hover:scale-100 bg-neutral-900/60 border-neutral-700/60 text-neutral-300'
+                  }`}
+                  style={isSelected ? {
+                    backgroundColor: `${accent.hex}22`,
+                    borderColor: accent.hex,
+                    color: '#ffffff',
+                    boxShadow: `0 0 20px ${accent.hex}45`
+                  } : undefined}
+                  title={`Ir para Parte ${pIdx + 1}`}
+                >
+                  <span 
+                    className="w-2 h-2 rounded-full transition-transform" 
+                    style={{ backgroundColor: isSelected ? accent.hex : '#737373' }} 
+                  />
+                  <span>PARTE {pIdx + 1}</span>
+                  <span className="text-[10px] sm:text-[11px] opacity-75 font-mono">
+                    ({pIdx + 1}/{parts.length})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="h-4 sm:h-6" />
+        )}
+      </div>
 
-      {/* Centered Verse Text (Image 1 replica) */}
-      <motion.div
-        key={`verse-${reference}-${verseText}`}
-        initial={{ opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.28, ease: "easeOut" }}
-        className="flex-1 flex items-center justify-center text-center px-4 z-10"
-      >
-        <p 
-          className="text-white font-medium sm:font-semibold tracking-tight leading-relaxed max-w-5xl drop-shadow-lg"
-          style={{ fontSize: 'clamp(1.6rem, 4.2vw, 3.8rem)', lineHeight: '1.38' }}
-        >
-          {verseText || 'No princípio criou Deus os céus e a terra.'}
-        </p>
-      </motion.div>
+      {/* Floating Side Arrows for quick touch/click navigation when multiple parts exist */}
+      {parts.length > 1 && (
+        <>
+          <button
+            type="button"
+            disabled={activeIndex === 0}
+            onClick={(e) => {
+              e.stopPropagation();
+              prevPart();
+            }}
+            className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-3 rounded-full bg-black/50 hover:bg-black/80 text-white/70 hover:text-white border border-neutral-800 disabled:opacity-0 transition-all duration-200 cursor-pointer backdrop-blur-md shadow-xl"
+            title="Parte anterior"
+          >
+            <ChevronLeft className="w-5 h-5 sm:w-7 sm:h-7" />
+          </button>
+          <button
+            type="button"
+            disabled={activeIndex >= parts.length - 1}
+            onClick={(e) => {
+              e.stopPropagation();
+              nextPart();
+            }}
+            className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-3 rounded-full bg-black/50 hover:bg-black/80 text-white/70 hover:text-white border border-neutral-800 disabled:opacity-0 transition-all duration-200 cursor-pointer backdrop-blur-md shadow-xl"
+            title="Próxima parte"
+          >
+            <ChevronRight className="w-5 h-5 sm:w-7 sm:h-7" />
+          </button>
+        </>
+      )}
 
-      {/* Bottom Right Reference in Dynamic Theme Accent (Image 1 replica) */}
-      <motion.div 
-        key={`ref-${reference}`}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28, delay: 0.05 }}
-        className="w-full flex justify-end items-center z-10 pt-4"
-      >
-        <span 
-          className="font-bold text-base sm:text-xl md:text-2xl tracking-wider uppercase font-sans drop-shadow-md"
-          style={{ color: accent.hex }}
+      {/* CENTERED VERSE TEXT (FITS DYNAMICALLY WITHOUT CUTOFF) */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`verse-${reference}-${activeIndex}-${currentPartText.slice(0, 15)}`}
+          initial={{ opacity: 0, y: 6, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -6, scale: 1.02 }}
+          transition={{ duration: 0.24, ease: "easeOut" }}
+          className="flex-1 flex items-center justify-center text-center px-4 sm:px-12 md:px-16 z-10 max-h-[76vh] overflow-hidden my-auto"
         >
-          {reference || 'GÊNESIS 1:1 (ARA)'}
-        </span>
-      </motion.div>
+          <p 
+            className="font-medium sm:font-semibold tracking-tight max-w-5xl drop-shadow-xl select-none transition-colors duration-300"
+            style={{ 
+              fontSize: scaledFontSize, 
+              lineHeight,
+              color: activeTextColor,
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+              filter: `drop-shadow(0 4px 25px ${activeTextColor}40)`
+            }}
+          >
+            {currentPartText}
+          </p>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* BOTTOM ROW: PART COUNTER & DYNAMIC THEME ACCENT REFERENCE */}
+      <div className="w-full flex items-center justify-between z-10 pt-3 sm:pt-4 border-t border-white/5">
+        <div className="flex items-center gap-2">
+          {parts.length > 1 && (
+            <span 
+              className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wider"
+              style={{
+                color: activeTextColor,
+                opacity: 0.8,
+                fontSize: fontScale !== 1.0 ? `calc(0.875rem * ${fontScale})` : undefined
+              }}
+            >
+              PARTE {activeIndex + 1} DE {parts.length}
+            </span>
+          )}
+        </div>
+
+        <motion.div 
+          key={`ref-${reference}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, delay: 0.04 }}
+          className="flex items-center gap-2"
+        >
+          <span 
+            className="font-extrabold text-base sm:text-xl md:text-2xl tracking-wider uppercase font-sans drop-shadow-md"
+            style={{ 
+              color: activeTextColor,
+              fontSize: fontScale !== 1.0 ? `calc(1.35rem * ${fontScale})` : undefined
+            }}
+          >
+            {reference || 'GÊNESIS 1:1 (ARA)'}
+          </span>
+        </motion.div>
+      </div>
     </div>
   );
 }
@@ -183,15 +464,32 @@ export function SorteioProjectionScreen({
   }, [customConfig]);
 
   useEffect(() => {
+    const unsub = subscribeToProjection((msg) => {
+      if (msg.type === 'SORTEIO_UPDATE' && msg.data?.config) {
+        setLiveConfig(msg.data.config);
+      }
+    });
+
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'sorteio_projection_config' && e.newValue) {
         try {
           setLiveConfig(JSON.parse(e.newValue));
         } catch (err) {}
       }
+      if (e.key === 'projection_sorteio_data' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.config) {
+            setLiveConfig(parsed.config);
+          }
+        } catch (err) {}
+      }
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const formatWinner = (val: any) => {
@@ -345,7 +643,7 @@ export function SorteioProjectionScreen({
                 className="font-black tracking-tight leading-none transition-all duration-300 drop-shadow-2xl"
                 style={{
                   color: liveConfig.textColor,
-                  fontSize: `clamp(3rem, ${Math.round(11 * sizeRatio)}vw, ${Math.round(8.5 * sizeRatio)}rem)`,
+                  fontSize: `clamp(2.5rem, ${(12 * sizeRatio).toFixed(1)}vw, ${(9 * sizeRatio).toFixed(1)}rem)`,
                   filter: `drop-shadow(0 0 35px ${liveConfig.textColor}99)`
                 }}
               >
@@ -670,6 +968,24 @@ export function ChurchClockProjectionScreen({
 }: ChurchClockProjectionProps) {
   const { accent } = useTheme();
   const [timeString, setTimeString] = useState('');
+  const [projConfig, setProjConfig] = useState<ProjectionVisualConfig>(getProjectionSettings);
+
+  // Listen to projection settings updates
+  useEffect(() => {
+    const handleUpdate = () => setProjConfig(getProjectionSettings());
+    window.addEventListener('projection_settings_changed', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    const unsub = subscribeToProjection((msg) => {
+      if (msg.type === ('SYNC_STYLE' as any) && msg.data) {
+        setProjConfig(msg.data);
+      }
+    });
+    return () => {
+      window.removeEventListener('projection_settings_changed', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+      unsub();
+    };
+  }, []);
 
   // Primary logo state, immediately hydrated from all synchronously available sources
   const [activeLogo, setActiveLogo] = useState<string>(() => {
@@ -870,13 +1186,19 @@ export function ChurchClockProjectionScreen({
   // Guaranteed resolution of the logo: check propConfig, activeLogo state, localStorage, and memory cache
   const finalLogo = propConfig?.logoUrl || activeLogo || localStorage.getItem('church_logo_url') || memoryCachedLogo || '';
 
+  const bgStyleObj = getProjectionBackgroundStyle(projConfig);
+  const activeClockColor = getProjectionTextColor(projConfig, accent.hex);
+
   return (
-    <div className="w-full h-full bg-[#0a0a0c] flex flex-col justify-center items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none">
+    <div 
+      style={bgStyleObj}
+      className="w-full h-full flex flex-col justify-center items-center p-6 sm:p-10 md:p-14 overflow-hidden relative select-none transition-colors duration-300"
+    >
       {/* Background Radial Glow */}
       <div 
         className="absolute inset-0 pointer-events-none transition-all duration-700 ease-out"
         style={{
-          background: `radial-gradient(circle at 50% 50%, ${accent.hex}22 0%, rgba(10,10,12,0.65) 55%, #0a0a0c 100%)`
+          background: `radial-gradient(circle at 50% 50%, ${activeClockColor}22 0%, rgba(10,10,12,0.65) 55%, transparent 100%)`
         }}
       />
 
@@ -947,8 +1269,8 @@ export function ChurchClockProjectionScreen({
             className="font-mono font-bold tracking-widest transition-colors duration-500 select-none block leading-none"
             style={{
               fontSize: `${sizes.clockSize}px`,
-              color: accent.hex,
-              filter: `drop-shadow(0 0 35px ${accent.hex}80) drop-shadow(0 0 70px ${accent.hex}40)`
+              color: activeClockColor,
+              filter: `drop-shadow(0 0 35px ${activeClockColor}80) drop-shadow(0 0 70px ${activeClockColor}40)`
             }}
           >
             {timeString || '12:00:00'}

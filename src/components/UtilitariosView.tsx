@@ -1664,6 +1664,7 @@ export function UtilitariosView({
           };
           try {
             localStorage.setItem('projection_sorteio_data', JSON.stringify(payload));
+            localStorage.setItem('sorteio_projection_config', JSON.stringify(newConfig));
           } catch (e) {}
           broadcastToProjection({
             type: 'SORTEIO_UPDATE',

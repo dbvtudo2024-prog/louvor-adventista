@@ -57,6 +57,7 @@ import { ProgramLogo } from './components/ProgramLogo';
 import { useTheme } from './context/ThemeContext';
 import { AtmosphericBackground } from './components/AtmosphericBackground';
 import { broadcastToProjection, openSecondaryProjectionWindow, toggleSecondaryProjectionWindow, closeProjectionWindow, isProjectionWindowOpen, detectSecondaryScreen, isMultiScreenDetected, isMobileDevice } from './utils/projectionSync';
+import { saveProjectionSettings, getProjectionSettings } from './utils/projectionSettings';
 import { LiturgiaSidebar } from './components/LiturgiaSidebar';
 import { LiturgiaFloatingView } from './components/LiturgiaFloatingView';
 import { getChurchScreenConfig } from './components/SpecialProjections';
@@ -467,22 +468,36 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSlideMode, isProjecting, isMenuOpen, selectedAlbum, audio]);
 
-  // Load settings from localStorage
+  // Load settings from localStorage and projection settings
   useEffect(() => {
     try {
-      const savedFontSize = localStorage.getItem('fontSize') as any;
+      const projSettings = getProjectionSettings();
+      if (projSettings.fontSize && (projSettings.fontSize === 'sm' || projSettings.fontSize === 'md' || projSettings.fontSize === 'lg')) {
+        setFontSize(projSettings.fontSize);
+      } else {
+        const savedFontSize = localStorage.getItem('fontSize') as any;
+        if (savedFontSize) setFontSize(savedFontSize);
+      }
       const savedFontFamily = localStorage.getItem('fontFamily') as any;
-      if (savedFontSize) setFontSize(savedFontSize);
       if (savedFontFamily) setFontFamily(savedFontFamily);
     } catch (e) {
       console.warn('LocalStorage not available:', e);
     }
+
+    const handleSettingsChange = (e: any) => {
+      if (e?.detail?.fontSize && (e.detail.fontSize === 'sm' || e.detail.fontSize === 'md' || e.detail.fontSize === 'lg')) {
+        setFontSize(e.detail.fontSize);
+      }
+    };
+    window.addEventListener('projection_settings_changed', handleSettingsChange);
+    return () => window.removeEventListener('projection_settings_changed', handleSettingsChange);
   }, []);
 
-  // Save settings to localStorage
+  // Save settings to localStorage and projection settings
   useEffect(() => {
     try {
       localStorage.setItem('fontSize', fontSize);
+      saveProjectionSettings({ fontSize });
     } catch (e) {
       console.warn('LocalStorage not available:', e);
     }
@@ -564,9 +579,19 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [isSlideMode, currentSlideIndex, slides, isPlaying]);
 
+  // Always reset slide index to 0 whenever a new song or Bible verse is selected
+  useEffect(() => {
+    setCurrentSlideIndex(0);
+  }, [selectedSong?.id]);
+
   // Synchronize current slide index with projection window whenever operator advances
   useEffect(() => {
     if (selectedSong) {
+      // If it is a Bible verse, BibliaView handles its own parts and synchronization
+      const isBible = selectedSong.category === 'Bíblia' || selectedSong.collection_id === 'biblia' || selectedSong.id?.startsWith('bible-');
+      if (isBible) {
+        return;
+      }
       try {
         localStorage.setItem('projection_current_index', String(currentSlideIndex));
       } catch (e) {}
@@ -1827,6 +1852,7 @@ function AppContent() {
               <BibliaView
                 onProjectVerse={(verseSong) => {
                   setSelectedSong(verseSong);
+                  setCurrentSlideIndex(0);
                   // Na Bíblia não precisa de tela do utilizador (ProjectionView) - mantém o operador na tela da Bíblia!
                   try {
                     localStorage.setItem('projection_active_status', 'open');
@@ -1834,10 +1860,15 @@ function AppContent() {
                     localStorage.setItem('projection_active_song_id', verseSong.id);
                     localStorage.setItem('projection_current_song', JSON.stringify(verseSong));
                     localStorage.setItem('projection_bible_verse', JSON.stringify(verseSong));
+                    localStorage.setItem('projection_current_index', '0');
                   } catch (e) {}
                   broadcastToProjection({
                     type: 'PROJECT_SONG',
                     song: verseSong,
+                    index: 0
+                  });
+                  broadcastToProjection({
+                    type: 'SYNC_INDEX',
                     index: 0
                   });
                   openSecondaryProjectionWindow(verseSong);

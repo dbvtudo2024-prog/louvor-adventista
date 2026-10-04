@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Palette, X, Paintbrush, Type, Minus, Plus, 
@@ -36,6 +37,7 @@ export function getSorteioConfig(): SorteioConfig {
 export function saveSorteioConfig(config: SorteioConfig): SorteioConfig {
   try {
     localStorage.setItem('sorteio_projection_config', JSON.stringify(config));
+    window.dispatchEvent(new CustomEvent('sorteio_config_changed', { detail: config }));
   } catch (e) {}
   return config;
 }
@@ -105,27 +107,31 @@ export function SorteioPersonalizacaoModal({
     }));
   };
 
-  return (
+  const modalContent = (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm select-none">
+      <div 
+        onClick={onClose}
+        className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 pb-20 sm:pb-6 bg-black/80 backdrop-blur-sm select-none"
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 15 }}
           transition={{ type: "spring", stiffness: 350, damping: 28 }}
-          className="w-full max-w-md bg-[#16171a] border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-md bg-[#16171a] border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-5.5rem)] sm:max-h-[86vh] my-auto"
         >
           {/* MODAL HEADER */}
-          <div className="p-4 sm:p-5 flex items-center justify-between border-b border-neutral-800/80 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#173232] text-[#2dd4bf] flex items-center justify-center shadow-inner">
-                <Palette className="w-5 h-5 stroke-[2.2]" />
+          <div className="p-3.5 sm:p-4 flex items-center justify-between border-b border-neutral-800/80 shrink-0">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#173232] text-[#2dd4bf] flex items-center justify-center shadow-inner shrink-0">
+                <Palette className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight">
+                <h3 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
                   Personalização da Projeção
                 </h3>
-                <p className="text-xs text-neutral-400 mt-0.5">
+                <p className="text-[11px] sm:text-xs text-neutral-400 mt-0.5">
                   Ajuste o visual do sorteio na tela
                 </p>
               </div>
@@ -141,22 +147,22 @@ export function SorteioPersonalizacaoModal({
           </div>
 
           {/* MODAL BODY (SCROLLABLE) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4 sm:space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-4 space-y-3 sm:space-y-3.5">
             
             {/* SEÇÃO 1: FUNDO DA PROJEÇÃO */}
-            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-4 space-y-3">
-              <div className="flex items-start gap-2.5">
+            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-3 sm:p-3.5 space-y-2.5">
+              <div className="flex items-start gap-2">
                 <div className="text-[#2dd4bf] mt-0.5">
                   <Paintbrush className="w-4 h-4 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Fundo da Projeção</h4>
-                  <p className="text-xs text-neutral-400">Cor base de fundo da tela de exibição</p>
+                  <h4 className="text-xs sm:text-sm font-bold text-white">Fundo da Projeção</h4>
+                  <p className="text-[11px] text-neutral-400">Cor base de fundo da tela de exibição</p>
                 </div>
               </div>
 
               {/* Swatches Row */}
-              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap pt-1">
+              <div className="flex items-center gap-2 flex-wrap pt-0.5">
                 {BG_COLORS.map(color => {
                   const isSelected = config.bgColor.toLowerCase() === color.toLowerCase();
                   return (
@@ -164,7 +170,7 @@ export function SorteioPersonalizacaoModal({
                       key={color}
                       type="button"
                       onClick={() => setConfig(prev => ({ ...prev, bgColor: color }))}
-                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all relative cursor-pointer ${
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-all relative cursor-pointer ${
                         isSelected 
                           ? 'ring-2 ring-[#2dd4bf] ring-offset-2 ring-offset-[#1b1c20] scale-110' 
                           : 'hover:scale-105 opacity-90 hover:opacity-100 border border-neutral-700/50'
@@ -173,7 +179,7 @@ export function SorteioPersonalizacaoModal({
                     >
                       {isSelected && (
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <Check className={`w-4 h-4 stroke-[3] ${color === '#ffffff' ? 'text-black' : 'text-[#2dd4bf]'}`} />
+                          <Check className={`w-3.5 h-3.5 stroke-[3] ${color === '#ffffff' ? 'text-black' : 'text-[#2dd4bf]'}`} />
                         </div>
                       )}
                     </button>
@@ -184,12 +190,12 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => bgColorPickerRef.current?.click()}
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed border-neutral-600 hover:border-[#2dd4bf] text-neutral-400 hover:text-[#2dd4bf] flex items-center justify-center transition-all cursor-pointer ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-dashed border-neutral-600 hover:border-[#2dd4bf] text-neutral-400 hover:text-[#2dd4bf] flex items-center justify-center transition-all cursor-pointer ${
                     !BG_COLORS.includes(config.bgColor.toLowerCase()) ? 'ring-2 ring-[#2dd4bf] ring-offset-2 ring-offset-[#1b1c20] text-[#2dd4bf] border-[#2dd4bf]' : ''
                   }`}
                   title="Escolher cor personalizada"
                 >
-                  <Palette className="w-4 h-4" />
+                  <Palette className="w-3.5 h-3.5" />
                 </button>
                 <input
                   ref={bgColorPickerRef}
@@ -202,19 +208,19 @@ export function SorteioPersonalizacaoModal({
             </div>
 
             {/* SEÇÃO 2: TEXTO PRINCIPAL */}
-            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-4 space-y-4">
-              <div className="flex items-start gap-2.5">
+            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-3 sm:p-3.5 space-y-3">
+              <div className="flex items-start gap-2">
                 <div className="text-[#2dd4bf] mt-0.5">
                   <Type className="w-4 h-4 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Texto Principal</h4>
-                  <p className="text-xs text-neutral-400">Formatação dos nomes sorteados</p>
+                  <h4 className="text-xs sm:text-sm font-bold text-white">Texto Principal</h4>
+                  <p className="text-[11px] text-neutral-400">Formatação dos nomes sorteados</p>
                 </div>
               </div>
 
               {/* Text Swatches Row */}
-              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 {TEXT_COLORS.map(color => {
                   const isSelected = config.textColor.toLowerCase() === color.toLowerCase();
                   return (
@@ -222,7 +228,7 @@ export function SorteioPersonalizacaoModal({
                       key={color}
                       type="button"
                       onClick={() => setConfig(prev => ({ ...prev, textColor: color }))}
-                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all relative cursor-pointer ${
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-all relative cursor-pointer ${
                         isSelected 
                           ? 'ring-2 ring-[#2dd4bf] ring-offset-2 ring-offset-[#1b1c20] scale-110' 
                           : 'hover:scale-105 opacity-90 hover:opacity-100 border border-neutral-700/50'
@@ -231,7 +237,7 @@ export function SorteioPersonalizacaoModal({
                     >
                       {isSelected && (
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <Check className={`w-4 h-4 stroke-[3] ${color === '#ffffff' || color === '#fef08a' ? 'text-black' : 'text-white'}`} />
+                          <Check className={`w-3.5 h-3.5 stroke-[3] ${color === '#ffffff' || color === '#fef08a' ? 'text-black' : 'text-white'}`} />
                         </div>
                       )}
                     </button>
@@ -242,12 +248,12 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => textColorPickerRef.current?.click()}
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed border-neutral-600 hover:border-[#2dd4bf] text-neutral-400 hover:text-[#2dd4bf] flex items-center justify-center transition-all cursor-pointer ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-dashed border-neutral-600 hover:border-[#2dd4bf] text-neutral-400 hover:text-[#2dd4bf] flex items-center justify-center transition-all cursor-pointer ${
                     !TEXT_COLORS.includes(config.textColor.toLowerCase()) ? 'ring-2 ring-[#2dd4bf] ring-offset-2 ring-offset-[#1b1c20] text-[#2dd4bf] border-[#2dd4bf]' : ''
                   }`}
                   title="Escolher cor personalizada para o texto"
                 >
-                  <Palette className="w-4 h-4" />
+                  <Palette className="w-3.5 h-3.5" />
                 </button>
                 <input
                   ref={textColorPickerRef}
@@ -259,15 +265,15 @@ export function SorteioPersonalizacaoModal({
               </div>
 
               {/* Tamanho da Letra */}
-              <div className="space-y-2 pt-1 border-t border-neutral-800/80">
+              <div className="space-y-1.5 pt-1 border-t border-neutral-800/80">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-neutral-300">Tamanho da letra</span>
-                  <span className="w-6 h-6 rounded-full bg-[#1b3232] text-[#2dd4bf] text-xs font-mono font-bold flex items-center justify-center">
+                  <span className="w-6 h-6 rounded-full bg-[#1b3232] text-[#2dd4bf] text-[11px] font-mono font-bold flex items-center justify-center">
                     {config.fontSize}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => handleFontSizeChange(-1)}
@@ -299,11 +305,11 @@ export function SorteioPersonalizacaoModal({
               </div>
 
               {/* Case Buttons: [Aa (Normal)] [AA (Maiúsculo)] [aa (Minúsculo)] */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-3 gap-1.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, textCase: 'normal' }))}
-                  className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all text-center ${
+                  className={`py-1.5 px-1 text-[11px] sm:text-xs font-semibold rounded-xl border transition-all text-center ${
                     config.textCase === 'normal'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -315,7 +321,7 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, textCase: 'uppercase' }))}
-                  className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
+                  className={`py-1.5 px-1 text-[11px] sm:text-xs font-bold rounded-xl border transition-all text-center ${
                     config.textCase === 'uppercase'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -327,7 +333,7 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, textCase: 'lowercase' }))}
-                  className={`py-2 px-1 text-xs font-medium rounded-xl border transition-all text-center ${
+                  className={`py-1.5 px-1 text-[11px] sm:text-xs font-medium rounded-xl border transition-all text-center ${
                     config.textCase === 'lowercase'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -339,14 +345,14 @@ export function SorteioPersonalizacaoModal({
             </div>
 
             {/* SEÇÃO 3: DINÂMICA DO SORTEIO */}
-            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-4 space-y-3">
-              <div className="flex items-start gap-2.5">
+            <div className="bg-[#1b1c20] border border-neutral-800/90 rounded-2xl p-3 sm:p-3.5 space-y-2.5">
+              <div className="flex items-start gap-2">
                 <div className="text-[#2dd4bf] mt-0.5">
                   <Zap className="w-4 h-4 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Dinâmica do Sorteio</h4>
-                  <p className="text-xs text-neutral-400">Velocidade de rolagem dos nomes</p>
+                  <h4 className="text-xs sm:text-sm font-bold text-white">Dinâmica do Sorteio</h4>
+                  <p className="text-[11px] text-neutral-400">Velocidade de rolagem dos nomes</p>
                 </div>
               </div>
 
@@ -355,7 +361,7 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, speed: 'rapido' }))}
-                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-2 px-1.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                     config.speed === 'rapido'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -367,7 +373,7 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, speed: 'normal' }))}
-                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-2 px-1.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                     config.speed === 'normal'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -379,7 +385,7 @@ export function SorteioPersonalizacaoModal({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, speed: 'lento' }))}
-                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-2 px-1.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                     config.speed === 'lento'
                       ? 'bg-[#183636] border-[#2dd4bf] text-[#2dd4bf]'
                       : 'bg-[#212328] border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -392,12 +398,12 @@ export function SorteioPersonalizacaoModal({
 
           </div>
 
-          {/* MODAL FOOTER */}
-          <div className="p-4 sm:p-5 bg-[#141517] border-t border-neutral-800 flex items-center justify-between gap-3 shrink-0">
+          {/* MODAL FOOTER - SEMPRE VISÍVEL E NUNCA COBERTO */}
+          <div className="p-3 sm:p-4 bg-[#141517] border-t border-neutral-800 flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
               onClick={handleReset}
-              className="px-4 py-2.5 rounded-xl bg-[#352528] hover:bg-[#442e32] text-neutral-200 hover:text-white text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+              className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-[#352528] hover:bg-[#442e32] text-neutral-200 hover:text-white text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
             >
               Restaurar Padrão
             </button>
@@ -405,7 +411,7 @@ export function SorteioPersonalizacaoModal({
             <button
               type="button"
               onClick={handleApply}
-              className="px-6 py-2.5 rounded-xl bg-[#2dd4bf] hover:bg-[#26bba8] active:scale-95 text-[#072422] text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer hover:brightness-105"
+              className="px-5 sm:px-6 py-2 sm:py-2.5 rounded-xl bg-[#2dd4bf] hover:bg-[#26bba8] active:scale-95 text-[#072422] text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer hover:brightness-105"
             >
               Aplicar
             </button>
@@ -414,4 +420,7 @@ export function SorteioPersonalizacaoModal({
       </div>
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') return modalContent;
+  return createPortal(modalContent, document.body);
 }

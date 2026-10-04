@@ -83,10 +83,10 @@ export function TopBar({
           </button>
         </div>
 
-        {/* "Telas" Button */}
+        {/* "Telas" Button - Only visible on desktop/tablets, hidden on mobile */}
         <button
           onClick={onOpenTelas}
-          className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold tracking-wide transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer"
+          className="hidden md:flex px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold tracking-wide transition-all active:scale-95 items-center gap-1.5 shadow-sm cursor-pointer"
           style={{
             color: accent.hex,
             borderColor: `${accent.hex}50`,

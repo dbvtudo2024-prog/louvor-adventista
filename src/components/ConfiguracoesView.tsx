@@ -4,7 +4,7 @@ import {
   Sun, Moon, Palette, Layers, Sparkles, Monitor, Tv, 
   Smartphone, QrCode, Check, Copy, CheckCheck, Shield,
   Keyboard, Settings2, Sliders, Volume2, Maximize2,
-  Image as ImageIcon, Upload, Trash2, RotateCcw, Clock, Type, Play
+  Image as ImageIcon, Upload, Trash2, RotateCcw, Clock, Type, Play, BookOpen
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
@@ -21,6 +21,14 @@ import {
   getChurchLogoFromDb 
 } from '../utils/churchDb';
 import { broadcastToProjection, openSecondaryProjectionWindow } from '../utils/projectionSync';
+import { getBibleSplitMode, setBibleSplitMode, BibleSplitMode } from '../utils/bibleSplitter';
+import { 
+  getProjectionSettings, 
+  saveProjectionSettings, 
+  getProjectionBackgroundStyle, 
+  getProjectionTextColor, 
+  ProjectionVisualConfig 
+} from '../utils/projectionSettings';
 
 interface ConfiguracoesViewProps {
   onBackToHome?: () => void;
@@ -48,12 +56,28 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
   // Geral state
   const [autoScroll, setAutoScroll] = useState(true);
   const [blackoutKey, setBlackoutKey] = useState(true);
-  const [defaultFontSize, setDefaultFontSize] = useState<'padrao' | 'grande' | 'extragrande'>('grande');
 
-  // Projeção state
-  const [screenResolution, setScreenResolution] = useState<'1080p' | '720p' | '4k'>('1080p');
-  const [bgStyle, setBgStyle] = useState<'preto' | 'gradiente' | 'azul'>('preto');
+  // Projeção visual config state (Background, text color, font scaling)
+  const [projConfig, setProjConfig] = useState<ProjectionVisualConfig>(getProjectionSettings);
   const [showClockOverlay, setShowClockOverlay] = useState(false);
+  const [bibleSplitMode, setBibleSplitModeState] = useState<BibleSplitMode>(getBibleSplitMode());
+
+  const handleUpdateProjConfig = (partial: Partial<ProjectionVisualConfig>) => {
+    const updated = saveProjectionSettings(partial);
+    setProjConfig(updated);
+  };
+
+  const currentDefaultFontSize = projConfig.fontSize === 'sm' || projConfig.fontSize === 'md' ? 'padrao' : projConfig.fontSize === 'lg' ? 'grande' : 'extragrande';
+
+  const handleDefaultFontSizeChange = (val: 'padrao' | 'grande' | 'extragrande') => {
+    const targetSize = val === 'padrao' ? 'md' : val === 'grande' ? 'lg' : 'xl';
+    handleUpdateProjConfig({ fontSize: targetSize });
+  };
+
+  const handleBibleSplitModeChange = (mode: BibleSplitMode) => {
+    setBibleSplitModeState(mode);
+    setBibleSplitMode(mode);
+  };
 
   // Tela da Igreja & Relógio (Customização de tamanhos e logo)
   const [churchConfig, setChurchConfig] = useState<ChurchScreenConfig>(getChurchScreenConfig);
@@ -616,13 +640,13 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
                   <p className="text-[11px] text-neutral-400">Escala de texto recomendada para o projetor da igreja.</p>
                 </div>
                 <select
-                  value={defaultFontSize}
-                  onChange={(e) => setDefaultFontSize(e.target.value as any)}
+                  value={currentDefaultFontSize}
+                  onChange={(e) => handleDefaultFontSizeChange(e.target.value as any)}
                   className="bg-neutral-800 border border-neutral-700 text-xs text-white rounded-lg px-3 py-1.5 outline-none font-medium"
                 >
                   <option value="padrao">Padrão (100%)</option>
-                  <option value="grande">Grande (115%)</option>
-                  <option value="extragrande">Extra Grande (130%)</option>
+                  <option value="grande">Grande (125%)</option>
+                  <option value="extragrande">Extra Grande (150%)</option>
                 </select>
               </div>
             </div>
@@ -682,38 +706,203 @@ export function ConfiguracoesView({ onBackToHome }: ConfiguracoesViewProps) {
             </div>
           </div>
 
-          <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Sliders className="w-5 h-5" style={{ color: accent.hex }} />
-              Configuração Visual da Saída
-            </h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-5">
+            <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
               <div>
-                <label className="block text-neutral-400 mb-1.5 font-medium">Resolução Alvo:</label>
-                <select
-                  value={screenResolution}
-                  onChange={(e) => setScreenResolution(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500"
-                >
-                  <option value="1080p">Full HD (1920 x 1080 - 16:9)</option>
-                  <option value="720p">HD (1280 x 720 - 16:9)</option>
-                  <option value="4k">4K Ultra HD (3840 x 2160)</option>
-                </select>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Sliders className="w-5 h-5" style={{ color: accent.hex }} />
+                  Configuração Visual da Projeção (Telão)
+                </h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Personalize a cor de fundo, cor do texto e escala das letras para a saída do projetor.
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+              {/* 1. COR DE FUNDO */}
+              <div>
+                <label className="block text-neutral-300 mb-1.5 font-bold flex items-center justify-between">
+                  <span>Cor de Fundo da Projeção:</span>
+                  {projConfig.bgStyle === 'custom' && (
+                    <span className="font-mono text-[10px] text-neutral-400">{projConfig.customBgColor}</span>
+                  )}
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={projConfig.bgStyle}
+                    onChange={(e) => handleUpdateProjConfig({ bgStyle: e.target.value as any })}
+                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500 font-medium"
+                  >
+                    <option value="preto">Preto Absoluto (#000000)</option>
+                    <option value="gradiente">Gradiente Noturno Litúrgico</option>
+                    <option value="azul">Azul Profundo de Oração</option>
+                    <option value="vinho">Vinho Sacro Litúrgico</option>
+                    <option value="custom">Cor Personalizada...</option>
+                  </select>
+                  {projConfig.bgStyle === 'custom' && (
+                    <input
+                      type="color"
+                      value={projConfig.customBgColor}
+                      onChange={(e) => handleUpdateProjConfig({ customBgColor: e.target.value })}
+                      className="w-10 h-10 rounded-xl border border-neutral-700 bg-transparent cursor-pointer shrink-0"
+                      title="Escolher cor de fundo personalizada"
+                    />
+                  )}
+                </div>
               </div>
 
+              {/* 2. COR DO TEXTO PRINCIPAL */}
               <div>
-                <label className="block text-neutral-400 mb-1.5 font-medium">Cor de Fundo da Letra:</label>
+                <label className="block text-neutral-300 mb-1.5 font-bold flex items-center justify-between">
+                  <span>Cor do Texto Principal:</span>
+                  {projConfig.textColorMode === 'custom' && (
+                    <span className="font-mono text-[10px] text-neutral-400">{projConfig.customTextColor}</span>
+                  )}
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={projConfig.textColorMode}
+                    onChange={(e) => handleUpdateProjConfig({ textColorMode: e.target.value as any })}
+                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500 font-medium"
+                  >
+                    <option value="theme">Cor de Realce do Tema ({accent.name})</option>
+                    <option value="white">Branco Puro (#ffffff)</option>
+                    <option value="gold">Dourado Litúrgico (#dfa43a)</option>
+                    <option value="custom">Cor Personalizada...</option>
+                  </select>
+                  {projConfig.textColorMode === 'custom' && (
+                    <input
+                      type="color"
+                      value={projConfig.customTextColor}
+                      onChange={(e) => handleUpdateProjConfig({ customTextColor: e.target.value })}
+                      className="w-10 h-10 rounded-xl border border-neutral-700 bg-transparent cursor-pointer shrink-0"
+                      title="Escolher cor de texto personalizada"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* 3. TAMANHO DA LETRA NA PROJEÇÃO */}
+              <div>
+                <label className="block text-neutral-300 mb-1.5 font-bold">Tamanho da Letra na Projeção:</label>
                 <select
-                  value={bgStyle}
-                  onChange={(e) => setBgStyle(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500"
+                  value={projConfig.fontSize}
+                  onChange={(e) => handleUpdateProjConfig({ fontSize: e.target.value as any })}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white outline-none focus:border-neutral-500 font-medium"
                 >
-                  <option value="preto">Preto Absoluto (#000000)</option>
-                  <option value="gradiente">Gradiente Noturno Litúrgico</option>
-                  <option value="azul">Azul Profundo de Oração</option>
+                  <option value="sm">Pequena (85%)</option>
+                  <option value="md">Média / Padrão (100%)</option>
+                  <option value="lg">Grande (125%)</option>
+                  <option value="xl">Extra Grande (150%)</option>
                 </select>
               </div>
+            </div>
+
+            {/* LIVE PREVIEW CANVAS */}
+            <div className="pt-2">
+              <label className="block text-neutral-400 mb-1.5 font-bold text-xs uppercase tracking-wider">
+                Prévia ao Vivo do Telão:
+              </label>
+              {(() => {
+                const previewBg = getProjectionBackgroundStyle(projConfig);
+                const previewTextColor = getProjectionTextColor(projConfig, accent.hex);
+                const previewScaleClass = projConfig.fontSize === 'sm' ? 'text-lg sm:text-xl' : projConfig.fontSize === 'lg' ? 'text-2xl sm:text-3xl' : projConfig.fontSize === 'xl' ? 'text-3xl sm:text-4xl' : 'text-xl sm:text-2xl';
+
+                return (
+                  <div 
+                    style={previewBg}
+                    className="w-full h-36 sm:h-44 rounded-2xl border border-neutral-800 shadow-inner flex flex-col items-center justify-center p-6 text-center transition-colors duration-300 relative overflow-hidden group select-none"
+                  >
+                    <p 
+                      className={cn("font-black tracking-tight select-none uppercase transition-all duration-300 max-w-xl", previewScaleClass)}
+                      style={{ 
+                        color: previewTextColor,
+                        filter: `drop-shadow(0 4px 20px ${previewTextColor}55)`
+                      }}
+                    >
+                      DEUS É O NOSSO REFÚGIO E FORTALEZA
+                    </p>
+                    <span 
+                      className="absolute bottom-2.5 right-3 text-[10px] font-mono opacity-60 uppercase tracking-widest"
+                      style={{ color: previewTextColor }}
+                    >
+                      Salmo 46:1 • Saída HDMI 16:9
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* SEÇÃO DE PROJEÇÃO DA BÍBLIA SAGRADA (TEXTOS LONGOS) */}
+          <div className="bg-[#161618] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <BookOpen className="w-5 h-5" style={{ color: accent.hex }} />
+                Projeção da Bíblia Sagrada (Textos Longos & Versículos)
+              </h3>
+              <p className="text-xs text-neutral-400 mt-1">
+                Escolha como versículos com textos maiores devem ser apresentados na tela de projeção da igreja.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => handleBibleSplitModeChange('split')}
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  bibleSplitMode === 'split'
+                    ? 'shadow-md ring-1'
+                    : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                }`}
+                style={bibleSplitMode === 'split' ? {
+                  backgroundColor: `${accent.hex}15`,
+                  borderColor: accent.hex
+                } : undefined}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <span className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Dividir em Partes</span>
+                    <span 
+                      className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider"
+                      style={{ backgroundColor: `${accent.hex}30`, color: accent.hex }}
+                    >
+                      Padrão
+                    </span>
+                  </span>
+                  {bibleSplitMode === 'split' && (
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent.hex }} />
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                  Divide versículos extensos em 2 partes colocando acima do texto <strong className="text-neutral-200">"PARTE 1", "PARTE 2"</strong> com fonte grande e confortável.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleBibleSplitModeChange('fit')}
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  bibleSplitMode === 'fit'
+                    ? 'shadow-md ring-1'
+                    : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                }`}
+                style={bibleSplitMode === 'fit' ? {
+                  backgroundColor: `${accent.hex}15`,
+                  borderColor: accent.hex
+                } : undefined}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <span className="text-xs font-bold text-white">Ajustar Tamanho da Fonte</span>
+                  {bibleSplitMode === 'fit' && (
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent.hex }} />
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                  Mantém todo o versículo em um único slide, reduzindo proporcionalmente o tamanho da fonte para que todo o texto caiba na tela de projeção.
+                </p>
+              </button>
             </div>
           </div>
 

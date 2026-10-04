@@ -146,6 +146,11 @@ export function SlideEditorModal({
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '4:3' | 'tela-cheia'>('16:9');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Mobile dedicated tabs & full lyrics state
+  type MobileTab = 'slide' | 'slides' | 'fullText' | 'style';
+  const [mobileTab, setMobileTab] = useState<MobileTab>('slide');
+  const [fullLyricsText, setFullLyricsText] = useState<string>('');
+
   // Audio / Recording states
   const [audioUrl, setAudioUrl] = useState<string | null>(song.audio_url || null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -171,11 +176,18 @@ export function SlideEditorModal({
   // Reset or reload when song changes
   useEffect(() => {
     if (isOpen) {
-      setSlides(getDefaultSlides());
+      const initial = getDefaultSlides();
+      setSlides(initial);
       setCurrentSlideIndex(0);
       setActiveRibbonTab('arquivo');
+      setMobileTab('slide');
       setAudioUrl(song.audio_url || null);
       setIsPlayingAudio(false);
+
+      const combined = (song.lyrics && song.lyrics.trim().length > 0)
+        ? song.lyrics
+        : initial.map(s => s.primaryText).filter(Boolean).join('\n\n');
+      setFullLyricsText(combined);
     }
   }, [isOpen, song.id]);
 
@@ -256,6 +268,76 @@ export function SlideEditorModal({
     setSlides(nextSlides);
     setCurrentSlideIndex(index + 1);
     showToast('Slide duplicado!');
+  };
+
+  const handleMoveSlideUp = (idx: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (idx <= 0) return;
+    const next = [...slides];
+    const temp = next[idx];
+    next[idx] = next[idx - 1];
+    next[idx - 1] = temp;
+    setSlides(next);
+    setCurrentSlideIndex(idx - 1);
+  };
+
+  const handleMoveSlideDown = (idx: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (idx >= slides.length - 1) return;
+    const next = [...slides];
+    const temp = next[idx];
+    next[idx] = next[idx + 1];
+    next[idx + 1] = temp;
+    setSlides(next);
+    setCurrentSlideIndex(idx + 1);
+  };
+
+  const handleSplitFullLyrics = (mode: 'stanzas' | 'two-lines' | 'four-lines') => {
+    const text = fullLyricsText.trim();
+    if (!text) {
+      showToast('Digite a letra da música antes de dividir.');
+      return;
+    }
+
+    let chunks: string[] = [];
+    if (mode === 'stanzas') {
+      chunks = text
+        .split(/\n\s*\n+/)
+        .map(c => c.trim())
+        .filter(Boolean);
+    } else if (mode === 'two-lines') {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      for (let i = 0; i < lines.length; i += 2) {
+        chunks.push(lines.slice(i, i + 2).join('\n'));
+      }
+    } else if (mode === 'four-lines') {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      for (let i = 0; i < lines.length; i += 4) {
+        chunks.push(lines.slice(i, i + 4).join('\n'));
+      }
+    }
+
+    if (chunks.length === 0) return;
+
+    const baseSlide = currentSlide;
+    const newSlides: SlideData[] = chunks.map((chunk, idx) => ({
+      id: `slide-${Date.now()}-${idx}`,
+      primaryText: chunk,
+      auxiliaryText: '',
+      align: baseSlide.align || 'center',
+      textColor: baseSlide.textColor || '#eab308',
+      textSize: baseSlide.textSize || 18,
+      auxColor: baseSlide.auxColor || '#eab308',
+      auxSize: baseSlide.auxSize || 10,
+      bgColor: baseSlide.bgColor || '#000000',
+      bgImage: baseSlide.bgImage,
+      bgTransparent: baseSlide.bgTransparent || false
+    }));
+
+    setSlides(newSlides);
+    setCurrentSlideIndex(0);
+    setMobileTab('slide');
+    showToast(`${newSlides.length} slides gerados a partir da letra!`);
   };
 
   // --- TAB 1: ARQUIVO HANDLERS ---
@@ -592,8 +674,8 @@ export function SlideEditorModal({
         </div>
       )}
 
-      {/* 1. TOP TABS & CONTROLS HEADER (Image 1) */}
-      <header className="border-b border-neutral-800/90 bg-[#161922] flex flex-col shrink-0 select-none">
+      {/* 1. TOP TABS & CONTROLS HEADER (DESKTOP) */}
+      <header className="hidden md:flex border-b border-neutral-800/90 bg-[#161922] flex-col shrink-0 select-none">
         {/* Top bar with Ribbon Category Tabs + Window controls */}
         <div className="flex items-center justify-between px-2 sm:px-4 h-11 border-b border-neutral-800/60 bg-[#131620]">
           {/* Ribbon Tabs matching Image 1 */}
@@ -1109,8 +1191,8 @@ export function SlideEditorModal({
         </div>
       </header>
 
-      {/* MAIN CONTENT WORKSPACE: LEFT SIDEBAR | CENTER CANVAS | RIGHT PROPERTIES */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* MAIN CONTENT WORKSPACE (DESKTOP): LEFT SIDEBAR | CENTER CANVAS | RIGHT PROPERTIES */}
+      <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
         
         {/* 2. LEFT SIDEBAR: SLIDES LIST (Image 1) */}
         <aside className="w-56 sm:w-64 bg-[#141620] border-r border-neutral-800/80 flex flex-col shrink-0">
@@ -1533,6 +1615,585 @@ export function SlideEditorModal({
 
         </aside>
 
+      </div>
+
+      {/* ============================================================ */}
+      {/* MOBILE INTERFACE (<md breakpoint) - FÁCIL EDIÇÃO DE MÚSICA   */}
+      {/* ============================================================ */}
+      <div className="md:hidden flex flex-col flex-1 min-h-0 overflow-hidden bg-[#0c0e14]">
+        {/* Mobile Header Bar */}
+        <div className="bg-[#131620] px-3 py-2.5 border-b border-neutral-800 flex items-center justify-between shrink-0">
+          <div className="flex flex-col min-w-0 flex-1 mr-2">
+            <span className="text-xs font-black text-white truncate">
+              {song.title || 'Música'}
+            </span>
+            <span className="text-[10px] text-amber-400 font-mono">
+              Slide {currentSlideIndex + 1} de {slides.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onProjectSlide && (
+              <button
+                type="button"
+                onClick={handleProjectNow}
+                className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 rounded-lg text-xs"
+                title="Projetar este slide"
+              >
+                <Tv className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Salvar</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-neutral-400 hover:text-white rounded-lg cursor-pointer"
+              title="Fechar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Tab Selector */}
+        <div className="grid grid-cols-4 bg-[#0a0c12] p-1 border-b border-neutral-800/80 shrink-0 gap-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setMobileTab('slide')}
+            className={cn(
+              "py-1.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 text-[11px]",
+              mobileTab === 'slide' ? "bg-amber-500 text-neutral-950 shadow-sm" : "text-neutral-400 hover:text-white bg-neutral-900/40"
+            )}
+          >
+            <Pencil className="w-3 h-3" />
+            <span>Slide</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('slides')}
+            className={cn(
+              "py-1.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 text-[11px]",
+              mobileTab === 'slides' ? "bg-amber-500 text-neutral-950 shadow-sm" : "text-neutral-400 hover:text-white bg-neutral-900/40"
+            )}
+          >
+            <Layers className="w-3 h-3" />
+            <span>Todos ({slides.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('fullText')}
+            className={cn(
+              "py-1.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 text-[11px]",
+              mobileTab === 'fullText' ? "bg-amber-500 text-neutral-950 shadow-sm" : "text-neutral-400 hover:text-white bg-neutral-900/40"
+            )}
+          >
+            <Type className="w-3 h-3" />
+            <span>Letra Toda</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('style')}
+            className={cn(
+              "py-1.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1 text-[11px]",
+              mobileTab === 'style' ? "bg-amber-500 text-neutral-950 shadow-sm" : "text-neutral-400 hover:text-white bg-neutral-900/40"
+            )}
+          >
+            <Palette className="w-3 h-3" />
+            <span>Estilo</span>
+          </button>
+        </div>
+
+        {/* Mobile Tab Bodies */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+          {/* TAB 1: EDITAR SLIDE ATUAL */}
+          {mobileTab === 'slide' && (
+            <div className="space-y-3 pb-8">
+              {/* Compact Responsive Slide Preview */}
+              <div
+                className={cn(
+                  "w-full rounded-2xl shadow-xl relative overflow-hidden flex flex-col justify-center p-4 transition-all border border-neutral-800/80 aspect-[16/9] max-h-44",
+                  currentSlide.bgTransparent && "bg-[linear-gradient(45deg,#121212_25%,transparent_25%),linear-gradient(-45deg,#121212_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#121212_75%),linear-gradient(-45deg,transparent_75%,#121212_75%)] bg-[size:16px_16px] bg-[#1a1a1a]"
+                )}
+                style={{
+                  backgroundColor: currentSlide.bgTransparent ? undefined : (currentSlide.bgColor || '#000000'),
+                  backgroundImage: currentSlide.bgImage ? `url(${currentSlide.bgImage})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  textAlign: currentSlide.align || 'center'
+                }}
+              >
+                <p
+                  className="font-black uppercase tracking-tight leading-tight select-none drop-shadow-md transition-all line-clamp-4"
+                  style={{
+                    color: currentSlide.textColor || '#eab308',
+                    fontSize: `clamp(1rem, ${(currentSlide.textSize || 18) * 0.42}vw, 2.2rem)`,
+                    filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.8))'
+                  }}
+                >
+                  {currentSlide.primaryText || '(Vazio)'}
+                </p>
+                {currentSlide.auxiliaryText && (
+                  <p
+                    className="mt-1.5 font-semibold select-none drop-shadow-sm transition-all text-xs"
+                    style={{
+                      color: currentSlide.auxColor || '#eab308',
+                      filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.8))'
+                    }}
+                  >
+                    {currentSlide.auxiliaryText}
+                  </p>
+                )}
+              </div>
+
+              {/* Slide Stepper Controls Bar */}
+              <div className="flex items-center justify-between bg-[#151822] p-1.5 rounded-xl border border-neutral-800">
+                <button
+                  type="button"
+                  disabled={currentSlideIndex <= 0}
+                  onClick={() => setCurrentSlideIndex(currentSlideIndex - 1)}
+                  className="px-2.5 py-1.5 rounded-lg bg-neutral-800 text-neutral-200 hover:text-white disabled:opacity-30 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Anterior</span>
+                </button>
+
+                <div className="flex items-center gap-1 font-mono text-xs font-bold">
+                  <span className="text-amber-400">{currentSlideIndex + 1}</span>
+                  <span className="text-neutral-500">/</span>
+                  <span className="text-neutral-300">{slides.length}</span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={currentSlideIndex >= slides.length - 1}
+                  onClick={() => setCurrentSlideIndex(currentSlideIndex + 1)}
+                  className="px-2.5 py-1.5 rounded-lg bg-neutral-800 text-neutral-200 hover:text-white disabled:opacity-30 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Próximo</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Quick Slide Actions */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleAddSlide}
+                  className="flex-1 py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Novo Slide</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleDuplicateSlide(currentSlideIndex, e)}
+                  className="py-1.5 px-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Duplicar</span>
+                </button>
+                {slides.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteSlide(currentSlideIndex, e)}
+                    className="py-1.5 px-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800/50 text-rose-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Primary Text (Letra do Slide) */}
+              <div className="bg-[#141620] border border-neutral-800 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                    LETRA DESTE SLIDE
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentSlide({ primaryText: currentSlide.primaryText.toUpperCase() })}
+                      className="px-2 py-0.5 rounded bg-neutral-800 text-[10px] font-bold text-neutral-300 hover:text-white"
+                      title="Converter para MAIÚSCULAS"
+                    >
+                      AA
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentSlide({ primaryText: currentSlide.primaryText.toLowerCase() })}
+                      className="px-2 py-0.5 rounded bg-neutral-800 text-[10px] font-bold text-neutral-300 hover:text-white"
+                      title="Converter para minúsculas"
+                    >
+                      aa
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  rows={4}
+                  value={currentSlide.primaryText}
+                  onChange={(e) => updateCurrentSlide({ primaryText: e.target.value })}
+                  placeholder="Digite a letra deste slide..."
+                  className="w-full p-2.5 rounded-xl bg-[#0f1118] border border-neutral-700/80 focus:border-amber-500 text-sm text-white outline-none resize-none font-medium leading-relaxed"
+                />
+              </div>
+
+              {/* Auxiliary Text (Opcional) */}
+              <div className="bg-[#141620] border border-neutral-800 rounded-2xl p-3 space-y-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                  TEXTO AUXILIAR (OPCIONAL)
+                </span>
+                <input
+                  type="text"
+                  value={currentSlide.auxiliaryText || ''}
+                  onChange={(e) => updateCurrentSlide({ auxiliaryText: e.target.value })}
+                  placeholder="Ex: (Coro), (2x), Subtítulo..."
+                  className="w-full px-3 py-2 rounded-xl bg-[#0f1118] border border-neutral-700/80 focus:border-amber-500 text-xs text-white outline-none font-medium"
+                />
+              </div>
+
+              {/* Formatting: Alinhamento, Cor e Tamanho */}
+              <div className="bg-[#141620] border border-neutral-800 rounded-2xl p-3 space-y-3">
+                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                  FORMATAÇÃO DO TEXTO
+                </span>
+
+                {/* Alignment */}
+                <div className="grid grid-cols-3 gap-1 bg-[#0f1118] p-1 rounded-xl border border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentSlide({ align: 'left' })}
+                    className={cn(
+                      "py-1.5 rounded-lg flex items-center justify-center transition-all cursor-pointer",
+                      currentSlide.align === 'left' ? "bg-amber-500 text-black font-bold" : "text-neutral-400 hover:text-white"
+                    )}
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentSlide({ align: 'center' })}
+                    className={cn(
+                      "py-1.5 rounded-lg flex items-center justify-center transition-all cursor-pointer",
+                      (currentSlide.align === 'center' || !currentSlide.align) ? "bg-amber-500 text-black font-bold" : "text-neutral-400 hover:text-white"
+                    )}
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentSlide({ align: 'right' })}
+                    className={cn(
+                      "py-1.5 rounded-lg flex items-center justify-center transition-all cursor-pointer",
+                      currentSlide.align === 'right' ? "bg-amber-500 text-black font-bold" : "text-neutral-400 hover:text-white"
+                    )}
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Color Palette */}
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-bold text-neutral-300">Cor do Texto:</span>
+                  <div className="flex items-center gap-1.5">
+                    {['#eab308', '#ffffff', '#38bdf8', '#4ade80', '#fb923c', '#f43f5e'].map((hex) => (
+                      <button
+                        key={hex}
+                        type="button"
+                        onClick={() => updateCurrentSlide({ textColor: hex })}
+                        className={cn(
+                          "w-6 h-6 rounded-full border transition-transform cursor-pointer",
+                          currentSlide.textColor === hex ? "scale-125 border-white ring-2 ring-white/30" : "border-neutral-700"
+                        )}
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={currentSlide.textColor || '#eab308'}
+                      onChange={(e) => updateCurrentSlide({ textColor: e.target.value })}
+                      className="w-6 h-6 rounded-full cursor-pointer bg-transparent border-0"
+                    />
+                  </div>
+                </div>
+
+                {/* Font Size Stepper */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-neutral-300">Tamanho da Fonte:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentSlide({ textSize: Math.max(10, (currentSlide.textSize || 18) - 2) })}
+                      className="w-7 h-7 rounded-lg bg-neutral-800 text-white font-bold flex items-center justify-center text-sm cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono text-xs font-bold text-amber-400 w-8 text-center">
+                      {currentSlide.textSize || 18}pt
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentSlide({ textSize: Math.min(60, (currentSlide.textSize || 18) + 2) })}
+                      className="w-7 h-7 rounded-lg bg-neutral-800 text-white font-bold flex items-center justify-center text-sm cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Replicate button */}
+                <button
+                  type="button"
+                  onClick={handleReplicateStyleToAll}
+                  className="w-full py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-xs font-bold text-amber-400 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Aplicar esta cor e fonte a todos os slides</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: TODOS OS SLIDES */}
+          {mobileTab === 'slides' && (
+            <div className="space-y-3 pb-8">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-400">
+                  Total de {slides.length} slides
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddSlide}
+                  className="py-1.5 px-3 bg-amber-500 text-neutral-950 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Novo Slide</span>
+                </button>
+              </div>
+
+              {/* Grid of Slide Cards */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {slides.map((slide, idx) => {
+                  const isActive = idx === currentSlideIndex;
+                  return (
+                    <div
+                      key={slide.id || idx}
+                      onClick={() => {
+                        setCurrentSlideIndex(idx);
+                        setMobileTab('slide');
+                      }}
+                      className={cn(
+                        "rounded-xl p-2.5 flex flex-col justify-between aspect-[16/10] relative transition-all border cursor-pointer shadow-md",
+                        isActive ? "border-amber-500 ring-2 ring-amber-500/30 bg-[#161a26]" : "border-neutral-800 bg-[#12141c] hover:border-neutral-700"
+                      )}
+                      style={{
+                        backgroundColor: slide.bgTransparent ? '#121212' : (slide.bgColor || '#000000')
+                      }}
+                    >
+                      <div className="flex items-center justify-between shrink-0">
+                        <span className={cn(
+                          "w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center font-mono",
+                          isActive ? "bg-amber-500 text-black" : "bg-neutral-800 text-neutral-300"
+                        )}>
+                          {idx + 1}
+                        </span>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            disabled={idx <= 0}
+                            onClick={(e) => handleMoveSlideUp(idx, e)}
+                            className="p-1 rounded bg-black/60 text-neutral-400 hover:text-white disabled:opacity-20 cursor-pointer"
+                            title="Mover para cima"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx >= slides.length - 1}
+                            onClick={(e) => handleMoveSlideDown(idx, e)}
+                            className="p-1 rounded bg-black/60 text-neutral-400 hover:text-white disabled:opacity-20 cursor-pointer"
+                            title="Mover para baixo"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                          {slides.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSlide(idx, e)}
+                              className="p-1 rounded bg-black/60 text-neutral-400 hover:text-rose-400 cursor-pointer"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <p
+                        className="text-[11px] font-bold line-clamp-3 leading-tight my-auto text-center"
+                        style={{ color: slide.textColor || '#eab308' }}
+                      >
+                        {slide.primaryText || '(Vazio)'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: LETRA COMPLETA (DIVISÃO AUTOMÁTICA EM SLIDES) */}
+          {mobileTab === 'fullText' && (
+            <div className="space-y-3 pb-8">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+                <span className="text-xs font-black text-amber-400 block mb-1">
+                  ⚡ Edição Rápida de Música Inteira
+                </span>
+                <p className="text-[11px] text-neutral-300 leading-relaxed">
+                  Cole ou edite a letra completa aqui. Você pode dividir a música automaticamente em slides com um único toque!
+                </p>
+              </div>
+
+              <textarea
+                rows={10}
+                value={fullLyricsText}
+                onChange={(e) => setFullLyricsText(e.target.value)}
+                placeholder="Cole a letra inteira da música aqui..."
+                className="w-full p-3 rounded-2xl bg-[#141620] border border-neutral-700 text-xs text-white outline-none resize-none font-medium leading-relaxed"
+              />
+
+              <div className="space-y-2">
+                <span className="text-[11px] font-black uppercase text-neutral-400 block">
+                  OPÇÕES DE DIVISÃO AUTOMÁTICA:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSplitFullLyrics('stanzas')}
+                  className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Dividir por Estrofes (Linhas em Branco)</span>
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSplitFullLyrics('two-lines')}
+                    className="py-2 px-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold rounded-xl text-xs text-center border border-neutral-700 cursor-pointer"
+                  >
+                    De 2 em 2 Linhas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSplitFullLyrics('four-lines')}
+                    className="py-2 px-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold rounded-xl text-xs text-center border border-neutral-700 cursor-pointer"
+                  >
+                    De 4 em 4 Linhas
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: ESTILO & PLANO DE FUNDO */}
+          {mobileTab === 'style' && (
+            <div className="space-y-3 pb-8">
+              {/* Aspect Ratio */}
+              <div className="bg-[#141620] border border-neutral-800 rounded-2xl p-3 space-y-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                  PROPORÇÃO DO TELÃO
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['16:9', 'tela-cheia', '4:3'] as const).map((ratio) => (
+                    <button
+                      key={ratio}
+                      type="button"
+                      onClick={() => setAspectRatio(ratio)}
+                      className={cn(
+                        "py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                        aspectRatio === ratio
+                          ? "bg-amber-500 text-black border-amber-500 shadow-md"
+                          : "bg-neutral-800 text-neutral-300 border-neutral-700"
+                      )}
+                    >
+                      {ratio === 'tela-cheia' ? 'Tela Cheia' : ratio}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Background Style */}
+              <div className="bg-[#141620] border border-neutral-800 rounded-2xl p-3 space-y-3">
+                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                  PLANO DE FUNDO
+                </span>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentSlide({ bgColor: '#000000', bgTransparent: false, bgImage: '' })}
+                    className={cn(
+                      "py-2 rounded-xl text-xs font-bold border cursor-pointer",
+                      (currentSlide.bgColor === '#000000' && !currentSlide.bgTransparent && !currentSlide.bgImage)
+                        ? "bg-amber-500 text-black border-amber-500"
+                        : "bg-black text-white border-neutral-700"
+                    )}
+                  >
+                    Fundo Preto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentSlide({ bgTransparent: true, bgImage: '' })}
+                    className={cn(
+                      "py-2 rounded-xl text-xs font-bold border cursor-pointer",
+                      currentSlide.bgTransparent
+                        ? "bg-amber-500 text-black border-amber-500"
+                        : "bg-neutral-800 text-neutral-300 border-neutral-700"
+                    )}
+                  >
+                    Transparente
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-neutral-300">URL de Imagem de Fundo:</label>
+                  <input
+                    type="text"
+                    value={currentSlide.bgImage || ''}
+                    onChange={(e) => updateCurrentSlide({ bgImage: e.target.value, bgTransparent: false })}
+                    placeholder="Cole o link da imagem..."
+                    className="w-full px-3 py-2 rounded-xl bg-[#0f1118] border border-neutral-700 text-xs text-white outline-none"
+                  />
+                  {currentSlide.bgImage && (
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentSlide({ bgImage: '' })}
+                      className="text-xs text-rose-400 underline pt-1 block cursor-pointer"
+                    >
+                      Remover Imagem de Fundo
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Apply to all button */}
+              <button
+                type="button"
+                onClick={handleReplicateStyleToAll}
+                className="w-full py-3 px-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Aplicar este Estilo a Todos os Slides</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

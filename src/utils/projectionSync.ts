@@ -1,7 +1,7 @@
 import { Song } from '../types';
 
 export interface ProjectionMessage {
-  type: 'PROJECT_SONG' | 'SONG_UPDATED' | 'SYNC_INDEX' | 'SYNC_FONT' | 'SORTEIO_UPDATE' | 'CLEAR_PROJECTION' | 'REQUEST_SYNC' | 'CLOSE_PROJECTION';
+  type: 'PROJECT_SONG' | 'SONG_UPDATED' | 'SYNC_INDEX' | 'SYNC_FONT' | 'SORTEIO_UPDATE' | 'CLEAR_PROJECTION' | 'REQUEST_SYNC' | 'CLOSE_PROJECTION' | 'SYNC_STYLE';
   song?: Song | null;
   index?: number;
   fontFamily?: 'serif' | 'montserrat' | 'opensans';
@@ -80,6 +80,8 @@ export function broadcastToProjection(message: ProjectionMessage): void {
 
     if (typeof message.index === 'number') {
       localStorage.setItem('projection_current_index', String(message.index));
+    } else if (message.type === 'PROJECT_SONG') {
+      localStorage.setItem('projection_current_index', '0');
     }
 
     if (message.fontFamily) {
@@ -90,6 +92,20 @@ export function broadcastToProjection(message: ProjectionMessage): void {
       localStorage.setItem('projection_active_type', 'sorteio');
       if (message.data) {
         localStorage.setItem('projection_sorteio_data', JSON.stringify(message.data));
+        if (message.data.config) {
+          localStorage.setItem('sorteio_projection_config', JSON.stringify(message.data.config));
+        }
+      }
+    }
+
+    if (message.type === 'SYNC_STYLE' && message.data) {
+      if (message.data.bgStyle !== undefined) localStorage.setItem('projection_bg_style', message.data.bgStyle);
+      if (message.data.customBgColor !== undefined) localStorage.setItem('projection_custom_bg_color', message.data.customBgColor);
+      if (message.data.textColorMode !== undefined) localStorage.setItem('projection_text_color_mode', message.data.textColorMode);
+      if (message.data.customTextColor !== undefined) localStorage.setItem('projection_custom_text_color', message.data.customTextColor);
+      if (message.data.fontSize !== undefined) {
+        localStorage.setItem('projection_font_size', message.data.fontSize);
+        localStorage.setItem('fontSize', message.data.fontSize);
       }
     }
 
@@ -183,6 +199,35 @@ export function subscribeToProjection(onMessage: (message: ProjectionMessage) =>
         type: 'SYNC_FONT',
         fontFamily: event.newValue as any
       });
+    } else if (event.key === 'sorteio_projection_config' && event.newValue) {
+      try {
+        const parsed = JSON.parse(event.newValue);
+        onMessage({
+          type: 'SORTEIO_UPDATE',
+          data: { config: parsed }
+        });
+      } catch (e) {}
+    } else if (
+      event.key === 'projection_bg_style' ||
+      event.key === 'projection_custom_bg_color' ||
+      event.key === 'projection_text_color_mode' ||
+      event.key === 'projection_custom_text_color' ||
+      event.key === 'projection_font_size' ||
+      event.key === 'fontSize'
+    ) {
+      try {
+        onMessage({
+          type: 'SYNC_STYLE',
+          data: {
+            bgStyle: localStorage.getItem('projection_bg_style') || 'preto',
+            customBgColor: localStorage.getItem('projection_custom_bg_color') || '#000000',
+            textColorMode: localStorage.getItem('projection_text_color_mode') || 'theme',
+            customTextColor: localStorage.getItem('projection_custom_text_color') || '#ffffff',
+            fontSize: localStorage.getItem('projection_font_size') || localStorage.getItem('fontSize') || 'md',
+            screenResolution: localStorage.getItem('projection_resolution') || '1080p'
+          }
+        });
+      } catch (e) {}
     } else if (event.key === 'projection_sorteio_data' && event.newValue) {
       try {
         const parsed = JSON.parse(event.newValue);
@@ -443,6 +488,10 @@ export async function openSecondaryProjectionWindow(
   if (songObj) {
     try {
       localStorage.setItem('projection_current_song', JSON.stringify(songObj));
+      localStorage.setItem('projection_current_index', '0');
+      if (songObj.id) {
+        localStorage.setItem('projection_active_song_id', songObj.id);
+      }
       if (songObj.id === 'sorteio-projection' || songObj.category === 'sorteio') {
         localStorage.setItem('projection_active_type', 'sorteio');
       } else if (songObj.id === 'church-clock-projection' || songObj.category === 'church-clock') {
@@ -457,6 +506,10 @@ export async function openSecondaryProjectionWindow(
     broadcastToProjection({
       type: 'PROJECT_SONG',
       song: songObj,
+      index: 0
+    });
+    broadcastToProjection({
+      type: 'SYNC_INDEX',
       index: 0
     });
   }
@@ -477,6 +530,11 @@ export async function openSecondaryProjectionWindow(
           index: 0,
           data: payloadData
         });
+        broadcastToProjection({
+          type: 'SYNC_INDEX',
+          index: 0,
+          song: songObj
+        });
       }
       return activeProjectionWin;
     } catch (e) {}
@@ -494,7 +552,7 @@ export async function openSecondaryProjectionWindow(
   const width = screenInfo.width;
   const height = screenInfo.height;
 
-  let url = `${window.location.origin}/?project=true${songId ? `&songId=${encodeURIComponent(songId)}` : ''}${isRetorno ? '&retorno=true' : ''}&fullscreen=true`;
+  let url = `${window.location.origin}/?project=true${songId ? `&songId=${encodeURIComponent(songId)}` : ''}${isRetorno ? '&retorno=true' : ''}&fullscreen=true&index=0`;
   if (songObj && (songObj.category === 'Bíblia' || songObj.collection_id === 'biblia' || songObj.id?.startsWith('bible-'))) {
     if (songObj.lyrics) {
       url += `&verseText=${encodeURIComponent(songObj.lyrics)}`;

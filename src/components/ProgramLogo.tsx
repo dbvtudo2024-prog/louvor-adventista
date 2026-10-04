@@ -3,10 +3,11 @@ import React from 'react';
 interface ProgramLogoProps {
   className?: string;
   size?: number | string;
+  showText?: boolean;
 }
 
-export function ProgramLogo({ className = "w-8 h-8", size }: ProgramLogoProps) {
-  return (
+export function ProgramLogo({ className = "w-8 h-8", size, showText = false }: ProgramLogoProps) {
+  const logoSvg = (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
       viewBox="0 0 512 512" 
@@ -233,5 +234,21 @@ export function ProgramLogo({ className = "w-8 h-8", size }: ProgramLogoProps) {
               fill="#4A2B04" />
       </g>
     </svg>
+  );
+
+  if (!showText) {
+    return logoSvg;
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-3">
+      {logoSvg}
+      <div className="flex items-baseline gap-1.5 select-none">
+        <span className="font-bold text-xl sm:text-2xl tracking-tight text-white">Louvor</span>
+        <span className="font-extrabold text-xl sm:text-2xl tracking-tight text-[#dfa43a] drop-shadow-[0_0_12px_rgba(223,164,58,0.5)]">
+          Adventista
+        </span>
+      </div>
+    </div>
   );
 }

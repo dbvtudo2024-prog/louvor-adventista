@@ -324,8 +324,8 @@ export function HomeHero() {
           </span>
         </div>
 
-        {/* Botão circular de Projeção / Fechar Projeção abaixo do relógio (Sem texto) */}
-        <div className="pt-3 sm:pt-5 flex items-center justify-center">
+        {/* Botão circular de Projeção / Fechar Projeção abaixo do relógio (Oculto em celular, visível em desktop/tablet) */}
+        <div className="hidden md:flex pt-3 sm:pt-5 items-center justify-center">
           <button
             onClick={handleToggleProjectScreen}
             className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xl active:scale-95 border-2 ${
